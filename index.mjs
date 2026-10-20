@@ -738,6 +738,7 @@ function makeTool(roster) {
       text: { type: 'string', description: 'note：这一阶段的结论、卡点或决定（一行到一段，不是每一轮的工具流水）' },
       target: { type: 'string', description: 'show/update/note/brief/archive/delete：任务 id 或名字' },
       sessionId: { type: 'string', description: 'create/update：显式指定常驻会话 id；缺省用当前会话' },
+      bind: { type: 'boolean', description: 'update：把这条任务绑到当前会话（面板新建的任务用这个补绑定）' },
       includeArchived: { type: 'boolean', description: 'list：是否连同已归档任务一起列出' },
     },
   }
@@ -820,7 +821,9 @@ function makeTool(roster) {
           return { ok: true, action, entry: found.entry, brief: formatBrief(found.entry, files) }
         }
         case 'update': {
-          const updated = roster.update(target, args ?? {})
+          const patch = { ...(args ?? {}) }
+          if (patch.bind === true && facts.sessionId !== undefined) patch.sessionId = facts.sessionId
+          const updated = roster.update(target, patch)
           if (updated.error !== undefined) return { ok: false, action, error: updated.error }
           return { ok: true, action, entry: updated.entry, changed: updated.changed }
         }
@@ -891,7 +894,7 @@ function renderToolText(value, roster) {
   }
 }
 
-const COMMAND_HELP = 'list | show <id|名字> | brief <id|名字> | note <id|名字> <一行结论> | active|waiting|done|archive <id|名字> | new <名字>'
+const COMMAND_HELP = 'list | show <id|名字> | brief <id|名字> | note <id|名字> <一行结论> | bind <id|名字> | active|waiting|done|archive <id|名字> | new <名字>'
 
 export function registerCommands(ctx, roster) {
   withService(ctx, 'commands', (commands) => {
@@ -955,6 +958,11 @@ export function runCommand(roster, invocation) {
       const noted = roster.addNote(target, text)
       if (noted.error !== undefined) return fail(noted.error)
       return done(`已记一条结论：${noted.entry.name}（共 ${noted.entry.notes.length} 条）`)
+    }
+    case 'bind': {
+      const updated = roster.update(rest, { sessionId: facts.sessionId ?? '' })
+      if (updated.error !== undefined) return fail(updated.error)
+      return done(`已把「${updated.entry.name}」绑到当前会话：${facts.sessionId ?? '（当前会话未知）'}`)
     }
     case 'active':
     case 'waiting':
@@ -1109,7 +1117,8 @@ function registerRoutes(ctx, webServer, roster) {
         const action = typeof body.action === 'string' ? body.action : ''
         const id = typeof body.id === 'string' ? body.id : undefined
         let result
-        if (action === 'update') result = roster.update(id, body)
+        if (action === 'create') result = roster.create({ name: body.name, brief: body.brief, kind: body.kind }, {})
+        else if (action === 'update') result = roster.update(id, body)
         else if (action === 'note') result = roster.addNote(id, body.text)
         else if (action === 'archive') result = roster.update(id, { status: 'archived' })
         else if (action === 'delete') result = roster.remove(id)

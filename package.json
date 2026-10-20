@@ -1,6 +1,6 @@
 {
   "name": "dsh-longtasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "长线任务花名册：把跨天/跨会话的长期任务固定成一条档案（目标、状态、下一步、交接日志、常驻会话），并提供左侧栏看板与 longtask 工具",
   "type": "module",
   "main": "./index.mjs",

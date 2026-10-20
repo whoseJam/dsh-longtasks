@@ -3,9 +3,7 @@
 // 宿主端 dsh.client 扫描把本文件作为 classic script 注入 __DSH_BOOT__ 图；
 // 执行时经 window.__ModuleLoader__.load 注册唯一 factory（id 必须等于插件名，
 // 与宿主 graph row 一致）。apply 挂两块表面：左侧栏一级入口 + 整页看板。
-// 数据只走本插件自注册的 /api/longtasks/* JSON 路由，不碰任何私有服务。
-// 视觉按一方页面（plugin manager / settings）的排版与 token 复刻：居中 960 栏、
-// 20px 标题、行式列表（48px 图标格 + 标题行 + 描述 + meta），不使用自绘卡片。
+// 文案走 ctx.locale 词典（zh / en），组件用注册时声明的 t 座位。
 ;(function () {
   if (typeof window === 'undefined' || !window.__ModuleLoader__ || typeof window.__ModuleLoader__.load !== 'function') return
   window.__ModuleLoader__.load({
@@ -20,13 +18,130 @@
       const { useCallback, useEffect, useMemo, useState } = React
 
       const PANEL_ID = 'longtasks'
+      const NS = 'longtasks'
       const STYLE_ID = 'dsh-longtasks-panel-style'
+
       const GROUPS = [
         { status: 'active', tone: 'info' },
         { status: 'waiting', tone: 'warning' },
         { status: 'done', tone: 'success' },
         { status: 'archived', tone: 'outline' },
       ]
+
+      const zh = {
+        panel: '长线任务',
+        intro: '跨天跟进的任务：一条档案对应一个常驻会话，点任务名回到现场。',
+        refresh: '刷新',
+        showArchived: '显示已归档',
+        hideArchived: '隐藏已归档',
+        create: '新建',
+        createName: '名字',
+        createNameHint: '例如：Desktop 0.7.10 异常跟踪',
+        createBrief: '核心思想',
+        createBriefHint: '这个任务是什么、为什么做、硬约束是什么（可后补）',
+        submit: '创建',
+        cancel: '取消',
+        created: '已创建「{name}」。还没有绑定会话：到目标会话里说「把长线任务 {id} 绑定到当前会话」，或在那里运行 /longtask bind {id}。',
+        loading: '正在读取花名册…',
+        emptyTitle: '还没有登记任何长线任务。',
+        emptyA: '在任意会话里说一句「把这件事建成长线任务」，模型会调用',
+        emptyB: '建一条档案并绑定当前会话。',
+        emptyC: '之后每天从这行点回去；收工让它用',
+        emptyD: '记下结论和下一步。',
+        errorPrefix: '花名册读取失败：',
+        statusActive: '进行中',
+        statusWaiting: '等待中',
+        statusDone: '已完成',
+        statusArchived: '已归档',
+        running: '运行中',
+        idleDays: '{n} 天未动',
+        next: '下一步：',
+        updatedAgo: '更新于 {ago}',
+        justNow: '刚刚',
+        minutesAgo: '{n} 分钟前',
+        hoursAgo: '{n} 小时前',
+        daysAgo: '{n} 天前',
+        session: '会话：{title}',
+        sessionMissing: '会话不可见（可能已归档或未同步）',
+        unbound: '未绑定会话',
+        files: 'workspace {n} 个文件',
+        notesCount: '记录 {n}',
+        copyBrief: '复制简报',
+        briefCopied: '「{name}」的交接简报已复制。',
+        copyFailed: '复制失败：{error}',
+        openFailed: '打开会话失败：{error}',
+        openHint: '打开负责这个任务的会话',
+        expandHint: '展开核心思想、最近记录与 workspace 文件',
+        done: '完成',
+        reopen: '恢复',
+        resume: '继续',
+        archive: '归档',
+        coreIdea: '核心思想',
+        recentNotes: '最近记录',
+        workspaceTitle: 'workspace（结构由这个任务自己决定）',
+        bindTip: '在目标会话运行 /longtask bind {id}',
+      }
+
+      const en = {
+        panel: 'Long tasks',
+        intro: 'Long-running work: each task keeps one pinned session — click a name to jump back.',
+        refresh: 'Refresh',
+        showArchived: 'Show archived',
+        hideArchived: 'Hide archived',
+        create: 'New',
+        createName: 'Name',
+        createNameHint: 'e.g. Desktop 0.7.10 error triage',
+        createBrief: 'Core idea',
+        createBriefHint: 'What this task is, why it exists, what is non-negotiable (can be filled later)',
+        submit: 'Create',
+        cancel: 'Cancel',
+        created: 'Created "{name}". It has no session yet: run /longtask bind {id} in the session that should own it.',
+        loading: 'Reading the roster…',
+        emptyTitle: 'No long task yet.',
+        emptyA: 'Say "make this a long task" in any session — the model calls',
+        emptyB: 'to create one bound to that session.',
+        emptyC: 'Come back here to jump into it; before finishing, let it record conclusions with',
+        emptyD: 'and update the next step.',
+        errorPrefix: 'Could not read the roster: ',
+        statusActive: 'Active',
+        statusWaiting: 'Waiting',
+        statusDone: 'Done',
+        statusArchived: 'Archived',
+        running: 'Running',
+        idleDays: '{n}d idle',
+        next: 'Next: ',
+        updatedAgo: 'updated {ago}',
+        justNow: 'just now',
+        minutesAgo: '{n} min ago',
+        hoursAgo: '{n} h ago',
+        daysAgo: '{n} d ago',
+        session: 'Session: {title}',
+        sessionMissing: 'session unavailable (archived or not synced)',
+        unbound: 'no session bound',
+        files: '{n} workspace files',
+        notesCount: '{n} notes',
+        copyBrief: 'Copy brief',
+        briefCopied: 'Handoff brief for "{name}" copied.',
+        copyFailed: 'Copy failed: {error}',
+        openFailed: 'Could not open the session: {error}',
+        openHint: 'Open the session that owns this task',
+        expandHint: 'Show core idea, recent notes and workspace files',
+        done: 'Done',
+        reopen: 'Reopen',
+        resume: 'Resume',
+        archive: 'Archive',
+        coreIdea: 'Core idea',
+        recentNotes: 'Recent notes',
+        workspaceTitle: 'workspace (its structure is up to the task)',
+        bindTip: 'Run /longtask bind {id} in the target session',
+      }
+
+      const STATUS_KEY = {
+        active: 'statusActive',
+        waiting: 'statusWaiting',
+        done: 'statusDone',
+        archived: 'statusArchived',
+      }
 
       const CSS = `
 .lt-page {
@@ -311,13 +426,37 @@
   font-size: 12px;
 }
 .lt-loading { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
+
+.lt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-1);
+  max-width: 620px;
+}
+.lt-formField { display: flex; flex-direction: column; gap: 4px; }
+.lt-formLabel { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }
+.lt-input, .lt-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-sm);
+  padding: 6px 10px;
+  outline: none;
+}
+.lt-textarea { resize: vertical; min-height: 64px; }
+.lt-input:focus, .lt-textarea:focus { border-color: var(--dsw-alias-state-business-primary); }
+.lt-formActions { display: flex; justify-content: flex-end; gap: 6px; }
 `
 
-      /**
-       * 每次 apply 都整表替换，绝不做「同 id 就跳过」的幂等：
-       * 热重载会重跑 apply，但文档里留着的是上一版 CSS，而新组件用的是新类名，
-       * 跳过就等于让新 DOM 跑在旧样式表上（表现为完全无样式）。
-       */
       function ensureStyle() {
         if (typeof document === 'undefined' || document.head === null) return
         for (const stale of document.querySelectorAll(`style[id^="${STYLE_ID}"]`)) stale.remove()
@@ -335,25 +474,21 @@
         return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`
       }
 
-      function formatAgo(ms) {
+      function formatAgo(ms, t) {
         const delta = Date.now() - ms
         if (!Number.isFinite(delta)) return '—'
-        if (delta < 60 * 1000) return '刚刚'
-        if (delta < 60 * 60 * 1000) return `${Math.floor(delta / 60000)} 分钟前`
-        if (delta < 24 * 60 * 60 * 1000) return `${Math.floor(delta / 3600000)} 小时前`
-        if (delta < 30 * 24 * 60 * 60 * 1000) return `${Math.floor(delta / 86400000)} 天前`
+        if (delta < 60 * 1000) return t('justNow')
+        if (delta < 60 * 60 * 1000) return t('minutesAgo', { n: Math.floor(delta / 60000) })
+        if (delta < 24 * 60 * 60 * 1000) return t('hoursAgo', { n: Math.floor(delta / 3600000) })
+        if (delta < 30 * 24 * 60 * 60 * 1000) return t('daysAgo', { n: Math.floor(delta / 86400000) })
         return formatTime(ms)
-      }
-
-      function statusLabel(labels, status) {
-        return (labels && labels[status]) || status
       }
 
       async function fetchRoster() {
         const response = await fetch('/api/longtasks/roster', { cache: 'no-store' })
         const payload = await response.json().catch(() => null)
         if (!response.ok || payload === null || payload.ok !== true) {
-          throw new Error((payload && payload.error) || `花名册请求失败（HTTP ${response.status}）`)
+          throw new Error((payload && payload.error) || `HTTP ${response.status}`)
         }
         return payload
       }
@@ -366,7 +501,7 @@
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok || payload === null || payload.ok !== true) {
-          throw new Error((payload && payload.error) || `操作失败（HTTP ${response.status}）`)
+          throw new Error((payload && payload.error) || `HTTP ${response.status}`)
         }
         return payload
       }
@@ -410,19 +545,21 @@
        * 组装看板页。组件身份在 apply 时创建一次（渲染期不新建组件），
        * 因此 ctx 只通过闭包进入，不会泄漏到 props。
        */
-      function makePage(ctx) {
-        return function LongTasksPage() {
-          const [state, setState] = useState({ phase: 'loading', entries: [], statusLabels: {}, error: null })
+      function makePage(ctx, fallbackT) {
+        return function LongTasksPage(props) {
+          const t = props !== undefined && typeof props.t === 'function' ? props.t : fallbackT
+          const [state, setState] = useState({ phase: 'loading', entries: [], error: null })
           const [busyId, setBusyId] = useState(null)
           const [notice, setNotice] = useState(null)
           const [showArchived, setShowArchived] = useState(false)
           const [expanded, setExpanded] = useState({})
           const [tick, setTick] = useState(0)
+          const [draft, setDraft] = useState(null)
 
           const load = useCallback(async () => {
             try {
               const payload = await fetchRoster()
-              setState({ phase: 'ready', entries: payload.entries ?? [], statusLabels: payload.statusLabels ?? {}, error: null })
+              setState({ phase: 'ready', entries: payload.entries ?? [], error: null })
             } catch (error) {
               setState((previous) => ({
                 ...previous,
@@ -438,7 +575,7 @@
             return () => { window.clearInterval(timer) }
           }, [load])
 
-          // 会话标题/最近活动/运行状态都来自会话目录本身，跟着它刷新即可。
+          // 会话标题/运行状态来自会话目录本身，跟着它刷新即可。
           useEffect(() => {
             const source = ctx.sessions && ctx.sessions.list
             if (source === undefined || source === null) return undefined
@@ -466,24 +603,40 @@
             }
           }, [load])
 
+          const createTask = useCallback(async () => {
+            if (draft === null || draft.name.trim().length === 0) return
+            setBusyId('new')
+            setNotice(null)
+            try {
+              const created = await postAction({ action: 'create', name: draft.name, brief: draft.brief })
+              setDraft(null)
+              await load()
+              setNotice({ kind: 'ok', text: t('created', { name: created.entry.name, id: created.entry.id }) })
+            } catch (error) {
+              setNotice({ kind: 'error', text: error instanceof Error ? error.message : String(error) })
+            } finally {
+              setBusyId(null)
+            }
+          }, [draft, load, t])
+
           const openSession = useCallback((entry) => {
             if (entry.sessionId === undefined || entry.sessionId === null) return
             try {
               ctx.layout.selectPanel(null)
               ctx.uiWorkspace.openSession(entry.sessionId)
             } catch (error) {
-              setNotice({ kind: 'error', text: `打开会话失败：${error instanceof Error ? error.message : String(error)}` })
+              setNotice({ kind: 'error', text: t('openFailed', { error: error instanceof Error ? error.message : String(error) }) })
             }
-          }, [])
+          }, [t])
 
           const copyBrief = useCallback(async (entry) => {
             try {
-              await copyText(entry.handoff || entry.brief || `${entry.name}\n${entry.next}`)
-              setNotice({ kind: 'ok', text: `「${entry.name}」的交接简报已复制。` })
+              await copyText(entry.handoff || entry.brief || entry.name)
+              setNotice({ kind: 'ok', text: t('briefCopied', { name: entry.name }) })
             } catch (error) {
-              setNotice({ kind: 'error', text: `复制失败：${error instanceof Error ? error.message : String(error)}` })
+              setNotice({ kind: 'error', text: t('copyFailed', { error: error instanceof Error ? error.message : String(error) }) })
             }
-          }, [])
+          }, [t])
 
           const entries = state.entries
           const visible = showArchived ? entries : entries.filter((entry) => entry.status !== 'archived')
@@ -506,20 +659,20 @@
             const group = GROUPS.find((item) => item.status === entry.status) || { tone: 'outline' }
 
             const meta = [
-              h('span', { key: 'upd' }, `更新于 ${formatAgo(lastActivity)}`),
+              h('span', { key: 'upd' }, t('updatedAgo', { ago: formatAgo(lastActivity, t) })),
               h('span', { key: 'dot1', className: 'lt-metaSep' }),
               h('span', {
                 key: 'sess',
                 className: 'lt-metaPath',
-                title: canOpen ? entry.sessionId : undefined,
+                title: canOpen ? entry.sessionId : (entry.id ? t('bindTip', { id: entry.id }) : undefined),
               },
               session !== undefined
-                ? `会话：${session.displayTitle}`
-                : (canOpen ? '会话不可见（可能已归档或未同步）' : '未绑定会话')),
+                ? t('session', { title: session.displayTitle })
+                : (canOpen ? t('sessionMissing') : t('unbound'))),
             ]
             if (files.length > 0) {
               meta.push(h('span', { key: 'dot2', className: 'lt-metaSep' }))
-              meta.push(h('span', { key: 'ws' }, `workspace ${files.length} 个文件`))
+              meta.push(h('span', { key: 'ws' }, t('files', { n: files.length })))
             }
 
             return h('li', {
@@ -534,25 +687,25 @@
                   ? h('button', {
                     type: 'button',
                     className: 'lt-rowOpen',
-                    title: '打开负责这个任务的会话',
+                    title: t('openHint'),
                     onClick: () => { openSession(entry) },
                   }, entry.name)
                   : h('span', { className: 'lt-rowName' }, entry.name),
                 entry.kind
                   ? h('span', { className: 'lt-tag', 'data-tone': 'outline' }, entry.kind)
                   : null,
-                h('span', { className: 'lt-tag', 'data-tone': group.tone }, statusLabel(state.statusLabels, entry.status)),
-                running ? h('span', { className: 'lt-tag', 'data-tone': 'neutral' }, '运行中') : null,
+                h('span', { className: 'lt-tag', 'data-tone': group.tone }, t(STATUS_KEY[entry.status] ?? 'statusActive')),
+                running ? h('span', { className: 'lt-tag', 'data-tone': 'neutral' }, t('running')) : null,
                 idleDays >= 3 && (entry.status === 'active' || entry.status === 'waiting')
                   ? h('span', {
                     className: 'lt-tag', 'data-tone': 'warning',
-                    title: `最近一次活动：${formatTime(lastActivity)}`,
-                  }, `${idleDays} 天未动`)
+                    title: formatTime(lastActivity),
+                  }, t('idleDays', { n: idleDays }))
                   : null),
               entry.brief ? h('p', { className: 'lt-desc', title: entry.brief }, entry.brief) : null,
               entry.next
                 ? h('p', { className: 'lt-next', title: entry.next },
-                  h('span', { className: 'lt-nextLabel' }, '下一步：'),
+                  h('span', { className: 'lt-nextLabel' }, t('next')),
                   h('span', { className: 'lt-nextText' }, entry.next))
                 : null,
               h('div', { className: 'lt-meta' }, meta),
@@ -560,88 +713,121 @@
                 ? h(React.Fragment, null,
                   entry.brief
                     ? h(React.Fragment, null,
-                      h('p', { className: 'lt-logLabel' }, '核心思想'),
+                      h('p', { className: 'lt-logLabel' }, t('coreIdea')),
                       h('p', { className: 'lt-briefBody' }, entry.brief))
                     : null,
                   notes.length > 0
                     ? h(React.Fragment, null,
-                      h('p', { className: 'lt-logLabel' }, '最近记录'),
+                      h('p', { className: 'lt-logLabel' }, t('recentNotes')),
                       h('ul', { className: 'lt-notes' }, notes.slice(0, 6).map((note, index) => h('li', { key: index, className: 'lt-note' },
-                        h('time', { className: 'lt-noteTime', title: formatTime(note.at) }, formatAgo(note.at)),
+                        h('time', { className: 'lt-noteTime', title: formatTime(note.at) }, formatAgo(note.at, t)),
                         h('span', { className: 'lt-noteText' }, note.text)))))
                     : null,
                   files.length > 0
                     ? h(React.Fragment, null,
-                      h('p', { className: 'lt-logLabel' }, `workspace（结构由这个任务自己决定）`),
+                      h('p', { className: 'lt-logLabel' }, t('workspaceTitle')),
                       h('ul', { className: 'lt-notes' }, files.slice(0, 12).map((file, index) => h('li', { key: index, className: 'lt-note' },
                         h('span', { className: 'lt-noteText' }, file)))),
                       h('p', { className: 'lt-path', title: entry.workspace }, entry.workspace))
-                    : h('p', { className: 'lt-path', title: entry.workspace }, `workspace：${entry.workspace}`))
+                    : h('p', { className: 'lt-path', title: entry.workspace }, entry.workspace ?? ''))
                 : null),
             h('div', { className: 'lt-actions' },
               h('button', {
                 type: 'button', className: 'lt-btn quiet', disabled: busy,
-                title: '展开核心思想、最近记录与 workspace 文件',
+                title: t('expandHint'),
                 onClick: () => { setExpanded((value) => ({ ...value, [entry.id]: value[entry.id] !== true })) },
-              }, `记录 ${notes.length}`),
+              }, t('notesCount', { n: notes.length })),
               h('button', {
                 type: 'button', className: 'lt-btn quiet',
                 onClick: () => { void copyBrief(entry) },
-              }, '复制简报'),
+              }, t('copyBrief')),
               entry.status === 'done' || entry.status === 'archived'
                 ? h('button', {
                   type: 'button', className: 'lt-btn quiet', disabled: busy,
                   onClick: () => { void runAction(entry, 'update', { status: 'active' }) },
-                }, '恢复')
+                }, t('reopen'))
                 : h('button', {
                   type: 'button', className: 'lt-btn quiet', disabled: busy,
                   onClick: () => { void runAction(entry, 'update', { status: entry.status === 'waiting' ? 'active' : 'done' }) },
-                }, entry.status === 'waiting' ? '继续' : '完成'),
+                }, entry.status === 'waiting' ? t('resume') : t('done')),
               entry.status === 'archived'
                 ? null
                 : h('button', {
                   type: 'button', className: 'lt-btn quiet', disabled: busy,
                   onClick: () => { void runAction(entry, 'archive') },
-                }, '归档')))
+                }, t('archive'))))
           }
 
           const total = visible.length
-
           const body = state.phase === 'loading' && entries.length === 0
-            ? h('p', { className: 'lt-loading' }, '正在读取花名册…')
+            ? h('p', { className: 'lt-loading' }, t('loading'))
             : total === 0
               ? h('div', { className: 'lt-empty' },
-                h('span', { className: 'lt-emptyTitle' }, '还没有登记任何长线任务。'),
-                h('span', null, '在任意会话里说一句「把这件事建成长线任务」，模型会调用 ',
-                  h('code', null, 'longtask create'), ' 建一条档案并绑定当前会话。'),
-                h('span', null, '之后每天从这行点回去；收工让它用 ',
-                  h('code', null, 'longtask note'), ' 记下进展和下一步。'))
+                h('span', { className: 'lt-emptyTitle' }, t('emptyTitle')),
+                h('span', null, t('emptyA'), ' ', h('code', null, 'longtask create'), ' ', t('emptyB')),
+                h('span', null, t('emptyC'), ' ', h('code', null, 'longtask note'), ' ', t('emptyD')))
               : h(React.Fragment, null, groups.map((group) => h('section', { key: group.status, className: 'lt-group' },
                 h('div', { className: 'lt-groupHead' },
-                  h('h2', { className: 'lt-groupTitle' }, statusLabel(state.statusLabels, group.status)),
+                  h('h2', { className: 'lt-groupTitle' }, t(STATUS_KEY[group.status] ?? 'statusActive')),
                   h('span', { className: 'lt-count' }, String(group.rows.length))),
                 h('ul', { className: 'lt-rows' }, group.rows.map(renderRow)))))
+
+          const form = draft === null ? null : h('div', { className: 'lt-form' },
+            h('label', { className: 'lt-formField' },
+              h('span', { className: 'lt-formLabel' }, t('createName')),
+              h('input', {
+                className: 'lt-input',
+                value: draft.name,
+                placeholder: t('createNameHint'),
+                autoFocus: true,
+                onChange: (event) => { setDraft({ ...draft, name: event.target.value }) },
+                onKeyDown: (event) => { if (event.key === 'Enter') void createTask() },
+              })),
+            h('label', { className: 'lt-formField' },
+              h('span', { className: 'lt-formLabel' }, t('createBrief')),
+              h('textarea', {
+                className: 'lt-textarea',
+                rows: 3,
+                value: draft.brief,
+                placeholder: t('createBriefHint'),
+                onChange: (event) => { setDraft({ ...draft, brief: event.target.value }) },
+              })),
+            h('div', { className: 'lt-formActions' },
+              h('button', {
+                type: 'button', className: 'lt-btn primary', disabled: busy || draft.name.trim().length === 0,
+                onClick: () => { void createTask() },
+              }, t('submit')),
+              h('button', {
+                type: 'button', className: 'lt-btn quiet',
+                onClick: () => { setDraft(null) },
+              }, t('cancel'))))
 
           return h('div', { className: 'lt-page' },
             h('div', { className: 'lt-column' },
               h('div', { className: 'lt-head' },
                 h('div', { className: 'lt-headText' },
                   h('h1', { className: 'lt-title' },
-                    '长线任务',
+                    t('panel'),
                     total > 0 ? h('span', { className: 'lt-titleCount' }, String(total)) : null),
-                  h('p', { className: 'lt-intro' },
-                    '跨天跟进的任务：一条档案对应一个常驻会话，点任务名回到现场。')),
+                  h('p', { className: 'lt-intro' }, t('intro'))),
                 h('div', { className: 'lt-toolbar' },
+                  draft === null
+                    ? h('button', {
+                      type: 'button', className: 'lt-btn quiet', disabled: busy,
+                      onClick: () => { setDraft({ name: '', brief: '' }) },
+                    }, t('create'))
+                    : null,
                   h('button', {
                     type: 'button', className: 'lt-btn quiet', disabled: busy,
                     onClick: () => { void load() },
-                  }, '刷新'),
+                  }, t('refresh')),
                   h('button', {
                     type: 'button', className: 'lt-btn quiet',
                     onClick: () => { setShowArchived((value) => !value) },
-                  }, showArchived ? '隐藏已归档' : '显示已归档'))),
+                  }, showArchived ? t('hideArchived') : t('showArchived')))),
+              form,
               state.error !== null
-                ? h('p', { className: 'lt-notice error' }, `花名册读取失败：${state.error}`)
+                ? h('p', { className: 'lt-notice error' }, t('errorPrefix') + state.error)
                 : null,
               notice !== null
                 ? h('p', { className: `lt-notice${notice.kind === 'error' ? ' error' : ''}` }, notice.text)
@@ -658,24 +844,29 @@
         ensureStyle()
         // 存活探针：面板半侧是否真被宿主加载，看 ~/.dsh/longtasks/client-ping.json。
         try { void fetch('/api/longtasks/ping', { method: 'POST' }) } catch {}
-        const Page = makePage(ctx)
+        const unset = () => ''
+        ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-longtasks: dictionaries')
+        const t = ctx.locale.bind(NS)
+        const Page = makePage(ctx, typeof t === 'function' ? t : unset)
 
         ctx.slots.inject('main', () => ctx.slots.register({
           name: 'main',
           key: PANEL_ID,
+          locale: NS,
         }, Page))
 
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist',
           id: PANEL_ID,
           order: 20,
-          label: () => '长线任务',
+          label: () => t('panel'),
+          locale: NS,
         }, RosterIcon))
       }
 
       return {
         name: 'longtasks-client',
-        inject: ['slots', 'layout', 'uiWorkspace', 'sessions'],
+        inject: ['slots', 'layout', 'uiWorkspace', 'sessions', 'locale'],
         apply,
       }
     },

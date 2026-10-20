@@ -205,6 +205,25 @@ describe('HTTP 数据面', () => {
     assert.match(row.handoff, /下一步在这/)
   })
 
+  it('面板可以新建未绑定任务，之后用 bind 绑定当前会话', async () => {
+    const { runCommand } = await import('../index.mjs')
+    const routes = await startServer()
+    const created = await call(routes.get('/api/longtasks/action'), {
+      method: 'POST',
+      body: { action: 'create', name: '面板建的', brief: '核心' },
+    })
+    assert.equal(created.status, 200)
+    assert.equal(created.payload.entry.sessionId, undefined)
+    // 在目标会话里 /longtask bind 补上
+    const roster = fresh()
+    const bound = runCommand(roster, {
+      rawInput: `bind ${created.payload.entry.id}`,
+      agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } },
+    })
+    assert.equal(bound.kind, 'success')
+    assert.equal(fresh().get(created.payload.entry.id).entry.sessionId, 'session-test-1')
+  })
+
   it('action 只接受 POST，未知动作报错', async () => {
     const routes = await startServer()
     const got = await call(routes.get('/api/longtasks/action'), { method: 'GET' })

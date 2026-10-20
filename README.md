@@ -1,6 +1,8 @@
 # dsh-longtasks
 
 [![ci](https://github.com/whoseJam/dsh-longtasks/actions/workflows/ci.yml/badge.svg)](https://github.com/whoseJam/dsh-longtasks/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-longtasks)](https://www.npmjs.com/package/dsh-longtasks)
+[![downloads](https://img.shields.io/npm/dm/dsh-longtasks)](https://www.npmjs.com/package/dsh-longtasks)
 
 长线任务花名册 —— 让跨天、跨会话的长期任务在 DSH 里有一个固定身份，而不是每天早上重新解释一遍。
 
@@ -49,6 +51,7 @@ session that owns one.
 /longtask note <id> <一行结论>   记一条阶段性结论
 /longtask done|waiting|active|archive <id>
 /longtask brief <id>            取交接简报（含 workspace 文件清单）
+/longtask bind <id>              把任务绑到当前会话（面板新建的任务用它补绑定）
 /longtask show <id>             打印 TASK.md 原文
 /longtask new <名字>            以当前会话新建
 ```
@@ -84,12 +87,18 @@ session that owns one.
 按 DSH 一方页面（插件管理 / 设置）的排版复刻：居中 960 栏、20px 标题、行式列表，
 圆角、字号、状态胶囊全部取 `--dsw-*` token，浅色/深色主题自动跟随。
 行悬停才浮出动作；点任务名回到负责它的会话；展开可以看到核心思想、最近记录和 workspace 文件。
+界面文案走 `ctx.locale`（中文 / English 各一份词典），跟随 DSH 的语言设置切换。
+右上角「新建」可以直接建一条任务（这时还没有会话，到目标会话里跑 `/longtask bind <id>` 补绑定）。
 
 ![浅色](docs/preview-light.jpg)
 
 ![悬停与展开](docs/preview-hover.jpg)
 
 ![深色](docs/preview-dark.jpg)
+
+![新建任务](docs/preview-new.jpg)
+
+![English UI](docs/preview-en.jpg)
 
 ## 安装
 
@@ -154,8 +163,7 @@ npm publish --access public        # 或打 tag 让 .github/workflows/publish.ym
 
 ## 已知限制
 
-- **界面是中文**，还没接 `ctx.locale` 做多语言。
-- **新建任务要靠模型**：面板只能看、改状态、归档，没有"新建"按钮（新建要绑定会话，等 API 稳定后再做）。
+- **宿主侧文案仍是中文**：工具输出、交接简报、系统提示注入都是中文；客户端界面已中英双语。
 - **删除是软删**：任务目录移到 `~/.dsh/longtasks/.trash/<id>-<时间戳>`，不会真的 `rm -rf`。
 - **没有跨设备同步**，也没有加密；档案是本地纯文本。
 - **用户提醒兜底是启发式**：关键词命中才触发，可能漏（长句、英文缩写）也可能多（一次闲聊里出现"应该"）。

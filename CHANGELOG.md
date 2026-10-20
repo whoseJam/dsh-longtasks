@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1
+
+- 界面中英双语：文案走 `ctx.locale` 词典，跟随 DSH 语言设置。
+- 面板新增「新建」：直接建一条任务（未绑定会话），到目标会话用 `/longtask bind <id>` 补绑定。
+- `longtask update` 新增 `bind: true`，把这个任务绑到调用它的会话。
+- README 增加 npm 版本 / 下载量徽章、新建与英文界面截图。
+
+
 ## 0.1.0
 
 首个版本。
