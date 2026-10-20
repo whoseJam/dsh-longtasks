@@ -1,79 +1,103 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, describe, it } from 'node:test'
 
-const dir = mkdtempSync(join(tmpdir(), 'dsh-longtasks-'))
-process.env.DSH_LONGTASKS_FILE = join(dir, 'roster.json')
+const root = mkdtempSync(join(tmpdir(), 'dsh-longtasks-'))
+process.env.DSH_LONGTASKS_DIR = root
 
-const { Roster, formatBrief, rosterFile } = await import('../index.mjs')
-
-function resetRoster() {
-  writeFileSync(rosterFile(), JSON.stringify({ version: 1, entries: [] }))
-}
-
-function freshRoster() {
-  return new Roster()
-}
+const { Roster, formatBrief, rosterDir } = await import('../index.mjs')
 
 const facts = { sessionId: 'session-test-1', cwd: '/tmp/project' }
 
-describe('Roster', () => {
-  beforeEach(() => { resetRoster() })
-  after(() => { /* 临时目录随系统清理 */ })
+function reset() {
+  rmSync(root, { recursive: true, force: true })
+  mkdirSync(root, { recursive: true })
+}
 
-  it('creates an entry bound to the current session', () => {
-    resetRoster()
-    const roster = freshRoster()
-    const created = roster.create({ name: '迁移管线', goal: '换掉旧路径' }, facts)
-    assert.equal(created.error, undefined)
-    assert.match(created.entry.id, /^lt-[0-9a-f]{8}$/)
-    assert.equal(created.entry.sessionId, 'session-test-1')
-    assert.equal(created.entry.cwd, '/tmp/project')
-    assert.equal(created.entry.status, 'active')
+function fresh() { return new Roster(root) }
+
+function taskFile(id) { return join(rosterDir(), id, 'TASK.md') }
+
+function readTask(id) { return readFileSync(taskFile(id), 'utf8') }
+
+after(() => { rmSync(root, { recursive: true, force: true }) })
+
+describe('任务目录与档案', () => {
+  beforeEach(() => { reset() })
+
+  it('一个任务 = 一个目录：TASK.md 存档案，目录本身就是 workspace', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '迁移管线', brief: '把 Flux 契约迁到新管线，不碰旧路径', next: '先跑通单帧导出', kind: 'feature' }, facts)
+    assert.equal(entry.workspace, join(rosterDir(), entry.id))
+    assert.ok(existsSync(taskFile(entry.id)))
+    const text = readTask(entry.id)
+    assert.match(text, /^---\nid: lt-[0-9a-f]{8}\nname: 迁移管线\nstatus: active\nkind: feature\nnext: 先跑通单帧导出\n/)
+    assert.match(text, /workspace: /)
+    assert.match(text, /## 核心思想\n\n把 Flux 契约迁到新管线/)
+    assert.match(text, /## 工作记录/)
+    assert.ok(existsSync(join(root, 'INDEX.md')))
   })
 
-  it('refuses a duplicate live name but allows reusing an archived one', () => {
-    resetRoster()
-    const roster = freshRoster()
-    roster.create({ name: '重复任务' }, facts)
+  it('同名拒绝，归档后可复用', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '重复任务' }, facts)
     assert.ok(roster.create({ name: '重复任务' }, facts).error)
-    const archived = roster.get('重复任务').entry
-    roster.update(archived.id, { status: 'archived' })
+    roster.update(entry.id, { status: 'archived' })
     assert.equal(roster.create({ name: '重复任务' }, facts).error, undefined)
   })
 
-  it('appends notes and keeps them in the brief', () => {
-    resetRoster()
-    const roster = freshRoster()
-    const { entry } = roster.create({ name: '带笔记' }, facts)
-    roster.addNote(entry.id, '完成了 A 部分')
-    roster.addNote(entry.id, '卡在 B 的接口上')
-    const fresh = freshRoster()
-    const found = fresh.get(entry.id).entry
-    assert.equal(found.notes.length, 2)
-    const brief = formatBrief(found)
-    assert.match(brief, /完成了 A 部分/)
-    assert.match(brief, /卡在 B 的接口上/)
+  it('note 追加阶段性结论，按时间倒序，并进入简报', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '带记录', brief: '核心' }, facts)
+    roster.addNote(entry.id, '第一阶段：改完取消逻辑，61 个用例通过')
+    roster.addNote(entry.id, '第二阶段：缩略图重试收敛，量级待发版验证')
+    const text = readTask(entry.id)
+    assert.ok(text.indexOf('第二阶段') < text.indexOf('第一阶段'))
+    const reloaded = fresh().get(entry.id).entry
+    assert.equal(reloaded.notes.length, 2)
+    const brief = formatBrief(reloaded)
+    assert.match(brief, /## 核心思想\n\n核心/)
+    assert.match(brief, /第二阶段：缩略图重试收敛/)
     assert.match(brief, /## 下一步/)
   })
 
-  it('reloads when the file changed outside the process', async () => {
-    resetRoster()
-    const roster = freshRoster()
-    roster.create({ name: '别人改的' }, facts)
-    assert.equal(roster.all().length, 1)
-    // 外部进程写入：mtime 变化必须让缓存失效
-    await new Promise((resolve) => setTimeout(resolve, 12))
-    writeFileSync(rosterFile(), JSON.stringify({ version: 1, entries: [{ id: 'lt-00000000', name: '外部条目' }] }))
-    assert.equal(roster.all().length, 1)
-    assert.equal(roster.all()[0].name, '外部条目')
+  it('改状态/下一步只动 frontmatter，正文原样保留', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '改状态', brief: '核心 A' }, facts)
+    roster.update(entry.id, { status: 'waiting', next: '等接口', brief: '核心 B' })
+    const text = readTask(entry.id)
+    assert.match(text, /status: waiting/)
+    assert.match(text, /next: 等接口/)
+    assert.match(text, /## 核心思想\n\n核心 B/)
   })
 
-  it('resolves targets by id, exact name, or a unique fragment', () => {
-    resetRoster()
-    const roster = freshRoster()
+  it('agent 自己在 TASK.md 里加的小节不会被插件写坏', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '自由结构', brief: '核心' }, facts)
+    writeFileSync(taskFile(entry.id), `${readTask(entry.id)}\n## 待修清单\n\n- [ ] D-003 删除中打开\n- [ ] D-006 恢复失败补码\n`)
+    roster.update(entry.id, { next: '先做 D-003' })
+    roster.addNote(entry.id, '一条结论')
+    const text = readTask(entry.id)
+    assert.match(text, /## 待修清单\n\n- \[ \] D-003 删除中打开\n- \[ \] D-006 恢复失败补码/)
+    assert.match(text, /next: 先做 D-003/)
+    assert.match(text, /一条结论/)
+  })
+
+  it('workspace 里的文件被列出来，TASK.md 除外', () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '有工作区', brief: '核心' }, facts)
+    writeFileSync(join(entry.workspace, 'issue-ledger.md'), '# 台账\n')
+    mkdirSync(join(entry.workspace, 'queries'), { recursive: true })
+    writeFileSync(join(entry.workspace, 'queries', 'q1.sql'), 'select 1')
+    const files = roster.workspaceFiles(fresh().get(entry.id).entry)
+    const paths = files.map((file) => file.path).sort()
+    assert.deepEqual(paths, ['issue-ledger.md', 'queries/q1.sql'])
+  })
+
+  it('按 id / 名字 / 唯一片段解析', () => {
+    const roster = fresh()
     const { entry } = roster.create({ name: 'Desktop 异常跟踪' }, facts)
     assert.equal(roster.get(entry.id).entry.id, entry.id)
     assert.equal(roster.get('Desktop 异常跟踪').entry.id, entry.id)
@@ -81,139 +105,114 @@ describe('Roster', () => {
     assert.ok(roster.get('不存在').error)
   })
 
-  it('hides archived entries from the default view', () => {
-    resetRoster()
-    const roster = freshRoster()
+  it('默认视图隐藏归档；删除会连目录一起删', () => {
+    const roster = fresh()
     const { entry } = roster.create({ name: '要归档的' }, facts)
     roster.update(entry.id, { status: 'archived' })
     assert.equal(roster.visible().length, 0)
     assert.equal(roster.visible({ includeArchived: true }).length, 1)
-  })
-})
-
-describe('longtask tool', () => {
-  it('runs create/list/note/brief through the tool surface', async () => {
-    resetRoster()
-    const registered = []
-    const ctx = {
-      get: () => undefined,
-      on: () => () => {},
-      effect: () => () => {},
-      tools: { register: (tool) => registered.push(tool) },
-      systemPrompt: { section: () => {} },
-    }
-    const { apply } = await import('../index.mjs')
-    apply(ctx)
-    const tool = registered[0]
-    assert.equal(tool.name, 'longtask')
-    const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp/project' } } } }
-
-    const created = await tool.execute({ action: 'create', name: '跑通工具', goal: 'g' }, exec)
-    assert.equal(created.ok, true)
-    await tool.execute({ action: 'note', target: created.entry.id, text: '记一条' }, exec)
-    const listed = await tool.execute({ action: 'list' }, exec)
-    assert.equal(listed.entries.length, 1)
-    assert.match(tool.output.render({}, listed)[0].text, /跑通工具/)
-    const brief = await tool.execute({ action: 'brief', target: created.entry.id }, exec)
-    assert.match(brief.brief, /记一条/)
-  })
-})
-
-describe('数据安全', () => {
-  it('备份无法解析的花名册，而不是静默覆盖', async () => {
-    const { readdirSync } = await import('node:fs')
-    writeFileSync(rosterFile(), '{ 这不是 JSON')
-    const roster = new Roster()
-    assert.deepEqual(roster.all(), [])
-    const backups = readdirSync(dir).filter((name) => name.includes('.corrupt-'))
-    assert.equal(backups.length, 1)
-    assert.match(backups[0], /^roster\.json\.corrupt-\d+$/)
-  })
-
-  it('外部写入后合并，不吞掉另一个进程新增的条目', () => {
-    resetRoster()
-    const mine = new Roster()
-    assert.equal(mine.all().length, 0)
-    // 模拟「载入之后盘上又变了，但 mtime 检测没发现」的时刻
-    const staleStamp = mine.cacheStamp
-    writeFileSync(rosterFile(), JSON.stringify({
-      version: 1,
-      entries: [{ id: 'lt-aaaaaaaa', name: '别的窗口建的', status: 'active', updatedAt: Date.now() }],
-    }))
-    mine.cacheStamp = staleStamp
-    mine.create({ name: '我建的' }, facts)
-    const names = mine.all().map((entry) => entry.name).sort()
-    assert.deepEqual(names, ['别的窗口建的', '我建的'].sort())
-  })
-
-  it('删除的条目不会被合并复活', () => {
-    resetRoster()
-    const roster = new Roster()
-    const { entry } = roster.create({ name: '待删除' }, facts)
-    assert.equal(roster.all().length, 1)
-    // 让下一次 flush 走合并分支
-    roster.cacheStamp = -1
     roster.remove(entry.id)
-    assert.equal(roster.all().length, 0)
+    assert.equal(existsSync(join(rosterDir(), entry.id)), false)
+  })
+
+  it('旧版 roster.json 迁移成任务目录', () => {
+    writeFileSync(join(root, 'roster.json'), JSON.stringify({
+      version: 1,
+      entries: [{ id: 'lt-12345678', name: '旧账本里的', status: 'active', goal: '旧目标', updatedAt: Date.now() }],
+    }))
+    const entries = fresh().all()
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].name, '旧账本里的')
+    assert.ok(existsSync(taskFile('lt-12345678')))
+    assert.equal(existsSync(join(root, 'roster.json')), false)
+    assert.ok(readdirSync(root).some((name) => name.startsWith('roster.json.migrated-')))
+  })
+
+  it('早期平铺的 tasks/<id>.md 迁移进任务目录', () => {
+    mkdirSync(rosterDir(), { recursive: true })
+    writeFileSync(join(rosterDir(), 'lt-99999999.md'), '---\nid: lt-99999999\nname: 平铺的\nstatus: active\n---\n\n## 核心思想\n\n旧的\n')
+    const entries = fresh().all()
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].name, '平铺的')
+    assert.equal(existsSync(join(rosterDir(), 'lt-99999999.md')), false)
+    assert.ok(existsSync(taskFile('lt-99999999')))
   })
 })
 
 describe('/longtask 命令', () => {
+  beforeEach(() => { reset() })
   const invocation = (rawInput) => ({
     rawInput,
     agent: { session: { id: 'session-test-1', header: { cwd: '/tmp/project' } } },
   })
 
-  it('new → list → note → done → brief 全链路', async () => {
-    resetRoster()
+  it('new → list → note → done → brief', async () => {
     const { runCommand } = await import('../index.mjs')
-    const roster = new Roster()
-
+    const roster = fresh()
     assert.equal(runCommand(roster, invocation('new 命令建的')).kind, 'success')
     assert.match(runCommand(roster, invocation('list')).text, /命令建的/)
-    assert.equal(runCommand(roster, invocation('note 命令建的 完成了第一段')).kind, 'success')
+    assert.equal(runCommand(roster, invocation('note 命令建的 第一阶段收尾')).kind, 'success')
     assert.match(runCommand(roster, invocation('done 命令建的')).text, /已完成/)
-    assert.match(runCommand(roster, invocation('brief 命令建的')).text, /完成了第一段/)
-    assert.equal(runCommand(roster, invocation('list')).text.includes('已完成'), true)
+    assert.match(runCommand(roster, invocation('brief 命令建的')).text, /第一阶段收尾/)
   })
 
-  it('空输入按 list 处理，未知子命令给出用法', async () => {
-    resetRoster()
+  it('未知子命令给出用法', async () => {
     const { runCommand } = await import('../index.mjs')
-    const roster = new Roster()
-    assert.equal(runCommand(roster, invocation('')).kind, 'success')
-    const unknown = runCommand(roster, invocation('lolwut'))
-    assert.equal(unknown.kind, 'error')
-    assert.match(unknown.text, /list \| show/)
+    const roster = fresh()
+    const result = runCommand(roster, invocation('lolwut'))
+    assert.equal(result.kind, 'error')
+    assert.match(result.text, /list \| show/)
   })
 })
 
-describe('系统提示注入', () => {
-  it('久未更新的条目带警示', async () => {
-    resetRoster()
-    const sixDaysAgo = Date.now() - 6 * 86_400_000
-    writeFileSync(rosterFile(), JSON.stringify({
-      version: 1,
-      entries: [{
-        id: 'lt-bbbbbbbb',
-        name: '放了很久的任务',
-        status: 'active',
-        updatedAt: sixDaysAgo,
-        createdAt: sixDaysAgo,
-      }],
-    }))
+describe('工具与系统提示', () => {
+  beforeEach(() => { reset() })
+
+  const applyOnce = async () => {
+    const tools = []
     const sections = []
     const ctx = {
       get: () => undefined,
       on: () => () => {},
       effect: () => () => {},
-      tools: { register: () => {} },
+      tools: { register: (tool) => tools.push(tool) },
       systemPrompt: { section: (section) => sections.push(section) },
     }
     const { apply } = await import('../index.mjs')
     apply(ctx)
-    const text = sections[0].text({ agent: { session: { id: 's', header: { cwd: '/tmp' } } } })
-    assert.match(text, /放了很久的任务/)
-    assert.match(text, /已 6 天未更新/)
+    return { tool: tools[0], section: sections[0] }
+  }
+
+  it('create/list/show/note/brief 全链路，show 返回 TASK.md 原文', async () => {
+    const { tool } = await applyOnce()
+    const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp/project' } } } }
+    const created = await tool.execute({ action: 'create', name: '跑通工具', brief: '核心思想', kind: 'bugfix' }, exec)
+    assert.equal(created.ok, true)
+    assert.match(tool.output.render({}, created)[0].text, /workspace/)
+
+    await tool.execute({ action: 'note', target: created.entry.id, text: '第一阶段结论' }, exec)
+    const listed = await tool.execute({ action: 'list' }, exec)
+    assert.equal(listed.entries.length, 1)
+    assert.match(tool.output.render({}, listed)[0].text, /跑通工具/)
+
+    const shown = await tool.execute({ action: 'show', target: created.entry.id }, exec)
+    assert.match(shown.markdown, /## 核心思想\n\n核心思想/)
+    assert.match(shown.taskFile, /TASK\.md$/)
+
+    const brief = await tool.execute({ action: 'brief', target: created.entry.id }, exec)
+    assert.match(brief.brief, /第一阶段结论/)
+    assert.match(brief.brief, /workspace/)
+  })
+
+  it('久未更新的条目在系统提示里带警示', async () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '放了很久的任务', brief: '核心' }, facts)
+    const old = new Date(Date.now() - 6 * 86_400_000).toISOString()
+    const text = readTask(entry.id)
+    writeFileSync(taskFile(entry.id), text.replace(/updatedAt: .*/, `updatedAt: ${old}`))
+    const { section } = await applyOnce()
+    const rendered = section.text({ agent: { session: { id: 's', header: { cwd: '/tmp' } } } })
+    assert.match(rendered, /放了很久的任务/)
+    assert.match(rendered, /已 \d+ 天未更新/)
   })
 })

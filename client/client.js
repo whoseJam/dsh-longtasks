@@ -258,6 +258,29 @@
 .lt-row:hover .lt-actions,
 .lt-row:focus-within .lt-actions { opacity: 1; }
 @media (hover: none) { .lt-actions { opacity: 1; } }
+.lt-logLabel {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+.lt-briefBody {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 19px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+}
+.lt-path {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lt-noteText { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lt-notes { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 0; padding: 0; list-style: none; }
 .lt-note {
   display: flex;
@@ -475,8 +498,9 @@
           const renderRow = (entry) => {
             const session = entry.sessionId ? sessionIndex[entry.sessionId] : undefined
             const running = session !== undefined && session.running === true
-            const lastActivity = session !== undefined ? session.updatedAt : entry.updatedAt
-            const noteCount = Array.isArray(entry.notes) ? entry.notes.length : 0
+            const lastActivity = session !== undefined ? session.updatedAt : (entry.lastTouchedAt ?? entry.updatedAt)
+            const notes = Array.isArray(entry.notes) ? entry.notes : []
+            const files = Array.isArray(entry.files) ? entry.files : []
             const idleDays = Math.floor((Date.now() - lastActivity) / 86400000)
             const canOpen = entry.sessionId !== undefined && entry.sessionId !== null
             const isOpen = expanded[entry.id] === true
@@ -494,12 +518,10 @@
                 ? `会话：${session.displayTitle}`
                 : (canOpen ? '会话不可见（可能已归档或未同步）' : '未绑定会话')),
             ]
-            if (entry.cwd !== undefined) {
+            if (files.length > 0) {
               meta.push(h('span', { key: 'dot2', className: 'lt-metaSep' }))
-              meta.push(h('span', { key: 'cwd', className: 'lt-metaPath' }, entry.cwd))
+              meta.push(h('span', { key: 'ws' }, `workspace ${files.length} 个文件`))
             }
-
-            const notes = Array.isArray(entry.notes) ? entry.notes : []
 
             return h('li', {
               key: entry.id,
@@ -517,6 +539,9 @@
                     onClick: () => { openSession(entry) },
                   }, entry.name)
                   : h('span', { className: 'lt-rowName' }, entry.name),
+                entry.kind
+                  ? h('span', { className: 'lt-tag', 'data-tone': 'outline' }, entry.kind)
+                  : null,
                 h('span', { className: 'lt-tag', 'data-tone': group.tone }, statusLabel(state.statusLabels, entry.status)),
                 running ? h('span', { className: 'lt-tag', 'data-tone': 'neutral' }, '运行中') : null,
                 idleDays >= 3 && (entry.status === 'active' || entry.status === 'waiting')
@@ -525,7 +550,7 @@
                     title: `最近一次活动：${formatTime(lastActivity)}`,
                   }, `${idleDays} 天未动`)
                   : null),
-              entry.goal ? h('p', { className: 'lt-desc', title: entry.goal }, entry.goal) : null,
+              entry.brief ? h('p', { className: 'lt-desc', title: entry.brief }, entry.brief) : null,
               entry.next
                 ? h('p', { className: 'lt-next', title: entry.next },
                   h('span', { className: 'lt-nextLabel' }, '下一步：'),
@@ -533,18 +558,33 @@
                 : null,
               h('div', { className: 'lt-meta' }, meta),
               isOpen
-                ? (notes.length > 0
-                  ? h('ul', { className: 'lt-notes' }, notes.slice().reverse().map((note, index) => h('li', { key: index, className: 'lt-note' },
-                    h('time', { className: 'lt-noteTime', title: formatTime(note.at) }, formatAgo(note.at)),
-                    h('span', null, note.text))))
-                  : h('p', { className: 'lt-desc' }, '还没有交接日志。'))
+                ? h(React.Fragment, null,
+                  entry.brief
+                    ? h(React.Fragment, null,
+                      h('p', { className: 'lt-logLabel' }, '核心思想'),
+                      h('p', { className: 'lt-briefBody' }, entry.brief))
+                    : null,
+                  notes.length > 0
+                    ? h(React.Fragment, null,
+                      h('p', { className: 'lt-logLabel' }, '最近记录'),
+                      h('ul', { className: 'lt-notes' }, notes.slice(0, 6).map((note, index) => h('li', { key: index, className: 'lt-note' },
+                        h('time', { className: 'lt-noteTime', title: formatTime(note.at) }, formatAgo(note.at)),
+                        h('span', { className: 'lt-noteText' }, note.text)))))
+                    : null,
+                  files.length > 0
+                    ? h(React.Fragment, null,
+                      h('p', { className: 'lt-logLabel' }, `workspace（结构由这个任务自己决定）`),
+                      h('ul', { className: 'lt-notes' }, files.slice(0, 12).map((file, index) => h('li', { key: index, className: 'lt-note' },
+                        h('span', { className: 'lt-noteText' }, file)))),
+                      h('p', { className: 'lt-path', title: entry.workspace }, entry.workspace))
+                    : h('p', { className: 'lt-path', title: entry.workspace }, `workspace：${entry.workspace}`))
                 : null),
             h('div', { className: 'lt-actions' },
               h('button', {
                 type: 'button', className: 'lt-btn quiet', disabled: busy,
-                title: '展开/收起交接日志',
+                title: '展开核心思想、最近记录与 workspace 文件',
                 onClick: () => { setExpanded((value) => ({ ...value, [entry.id]: value[entry.id] !== true })) },
-              }, `日志 ${noteCount}`),
+              }, `记录 ${notes.length}`),
               h('button', {
                 type: 'button', className: 'lt-btn quiet',
                 onClick: () => { void copyBrief(entry) },
@@ -609,9 +649,11 @@
                 : null,
               body,
               h('p', { className: 'lt-foot' },
-                '档案保存在 ',
-                h('code', null, '~/.dsh/longtasks/roster.json'),
-                '；每个新会话的系统提示会自动带上这份花名册。'))
+                '每个任务一个目录：',
+                h('code', null, '~/.dsh/longtasks/tasks/<id>/'),
+                '，',
+                h('code', null, 'TASK.md'),
+                ' 存核心思想与记录，其余文件由这个任务自己组织。'))
           )
         }
       }

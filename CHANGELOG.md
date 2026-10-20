@@ -4,10 +4,11 @@
 
 首个版本。
 
-- 长线任务档案：名称、目标、状态、下一步、绑定会话与工作目录、交接日志。
-- `longtask` 工具（create / list / show / update / note / brief / archive / delete）。
-- `/longtask` 命令（list / new / show / brief / note / active / waiting / done / archive）。
-- 系统提示注入：新会话开工即见花名册，含 ★ 当前会话归属与「已 N 天未更新」提示。
-- 左侧栏「长线任务」看板：按状态分组、下一步、会话活跃时间、交互日志展开、悬停动作。
-- 数据安全：原子写、损坏文件备份（`.corrupt-<ts>`）、跨进程写入合并。
+- **一个任务 = 一个目录**：`tasks/<id>/TASK.md` 存档案，同目录下的其余文件是该任务自由组织的 workspace。
+- **brief 与 workspace 分离**：brief 只写稳定的核心思想；workspace 结构由任务自己决定，插件不解析、不规定格式。
+- `longtask` 工具：create / list / show / update / note / brief / archive / delete；`show` 返回 TASK.md 原文。
+- `/longtask` 命令：list / new / show / brief / note / active / waiting / done / archive。
+- 系统提示注入：新会话开工即见花名册（★ 本会话归属、workspace 路径、久未更新警示）。
+- 左侧栏看板：按状态分组、核心思想、下一步、会话活跃时间、展开看记录与 workspace 文件。
+- 数据安全：原子写、frontmatter 与小节级改写（agent 自己加的小节不被冲掉）、旧格式自动迁移。
 - 兼容性门禁：`peerDependencies` 声明 `@deepseek-ai/dsh >=0.2.1-0 <0.3.0`。
