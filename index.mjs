@@ -1071,15 +1071,17 @@ export function openDirectory(target) {
   }
   if (!stat.isDirectory()) throw new Error(`不是目录：${path}`)
   const command = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'explorer' : 'xdg-open'
-  logOpen(`request command=${command} path=${path}`)
   const child = spawn(command, [path], { detached: true, stdio: 'ignore' })
-  child.on('error', (error) => { logOpen(`spawn error: ${error?.message ?? String(error)}`) })
-  child.on('close', (code) => { logOpen(`exit code=${code === null ? 'null' : code}`) })
+  // 成功不记账；只有真的失败才留一行，出问题时不用再靠猜。
+  child.on('error', (error) => { logOpen(`spawn ${command} failed: ${error?.message ?? String(error)} (${path})`) })
+  child.on('close', (code) => {
+    if (code !== null && code !== 0) logOpen(`exit ${code} command=${command} path=${path}`)
+  })
   child.unref()
   return path
 }
 
-/** 诊断日志：出问题时看 ~/.dsh/longtasks/open.log。 */
+/** 只在打开失败时写一行，正常使用不会生成内容。 */
 function logOpen(line) {
   try {
     appendFileSync(join(rootDir(), 'open.log'), `${new Date().toISOString()} ${line}\n`, 'utf8')
