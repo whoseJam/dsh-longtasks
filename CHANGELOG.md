@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3
+
+- **TASK.md 当索引**：工作原则新增一条，要求把台账、长结论、日志拆到 workspace 的独立文件；`longtask note` 超过 400 字会提示"细节该进文件"。
+- **`brief` 动作改名 `handoff`**（`brief` 保留为别名）：原来动作名与"核心思想"字段撞名，模型会把整篇交接简报写进核心思想。
+- **「打开目录」改为插件宿主直接调系统文件管理器**（macOS `open` / Windows `explorer` / Linux `xdg-open`），不再依赖 DSH 的 `openWorkspacePath` 桌面能力；只允许打开花名册目录内的路径；仅失败时写 `open.log`。
+- 文档：修正过期的 `tasks/<id>/` 路径与 `brief` 命令名。
+
+
 ## 0.1.2
 
 - 每行新增「打开目录」：调用 Host 的 `openWorkspacePath` 在系统文件管理器里打开该任务的 workspace；
