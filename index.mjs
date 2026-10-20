@@ -727,8 +727,8 @@ function makeTool(roster) {
     properties: {
       action: {
         type: 'string',
-        enum: ['create', 'list', 'show', 'update', 'note', 'brief', 'archive', 'delete'],
-        description: '要执行的动作；create 建档案，note 记一条结论，brief 取交接简报，list/show 只读',
+        enum: ['create', 'list', 'show', 'update', 'note', 'handoff', 'brief', 'archive', 'delete'],
+        description: '要执行的动作；create 建档案，note 记一条结论，handoff 取交接简报，list/show 只读',
       },
       name: { type: 'string', description: 'create/update：任务名字，能一眼认出是哪个长期目标' },
       kind: { type: 'string', description: 'create/update：任务性质，例如 bugfix / review / research / ops（自由文本，只做展示）' },
@@ -736,7 +736,7 @@ function makeTool(roster) {
       next: { type: 'string', description: 'create/update：下一步该做什么（下次接手的第一动作）' },
       status: { type: 'string', description: 'update：任务状态', enum: STATUSES },
       text: { type: 'string', description: 'note：这一阶段的结论、卡点或决定（一行到一段，不是每一轮的工具流水）' },
-      target: { type: 'string', description: 'show/update/note/brief/archive/delete：任务 id 或名字' },
+      target: { type: 'string', description: 'show/update/note/handoff/archive/delete：任务 id 或名字' },
       sessionId: { type: 'string', description: 'create/update：显式指定常驻会话 id；缺省用当前会话' },
       bind: { type: 'boolean', description: 'update：把这条任务绑到当前会话（面板新建的任务用这个补绑定）' },
       includeArchived: { type: 'boolean', description: 'list：是否连同已归档任务一起列出' },
@@ -751,7 +751,7 @@ function makeTool(roster) {
       'workspace 里放什么是任务自己的事：插件不预设结构，你用普通文件工具（Read/Write/Edit/Bash）按任务性质自己组织；',
       'brief 只写稳定的核心思想，不要写成流水账。',
       'create 建档案并默认绑定当前会话；list/show 查看；update 改状态/下一步/核心思想；',
-      'note 追加一条阶段性结论；brief 取可直接粘贴给新会话的交接简报；archive 归档；delete 删除。',
+      'note 追加一条阶段性结论；handoff 取可直接粘贴给新会话的交接简报（brief 为旧名，仍可用）；archive 归档；delete 删除。',
       '约定：用户说「把这个做成长线任务/以后每天跟进」时用 create；',
       '每完成一个阶段用 note 记一行结论并 update 下一步；新会话接手时先 list 或 brief。',
     ].join(''),
@@ -804,6 +804,7 @@ function makeTool(roster) {
           }
         }
         case 'show':
+        case 'handoff':
         case 'brief': {
           const found = roster.get(target)
           if (found.error !== undefined) return { ok: false, action, error: found.error }
@@ -887,6 +888,7 @@ function renderToolText(value, roster) {
         value.markdown.trim(),
         value.files.length > 0 ? `\nworkspace 文件：${value.files.join('、')}` : '',
       ].join('\n').trimEnd()
+    case 'handoff':
     case 'brief':
       return value.brief ?? formatBrief(value.entry, [])
     default:
@@ -894,7 +896,7 @@ function renderToolText(value, roster) {
   }
 }
 
-const COMMAND_HELP = 'list | show <id|名字> | brief <id|名字> | note <id|名字> <一行结论> | bind <id|名字> | active|waiting|done|archive <id|名字> | new <名字>'
+const COMMAND_HELP = 'list | show <id|名字> | handoff <id|名字> | note <id|名字> <一行结论> | bind <id|名字> | active|waiting|done|archive <id|名字> | new <名字>'
 
 export function registerCommands(ctx, roster) {
   withService(ctx, 'commands', (commands) => {
@@ -944,6 +946,7 @@ export function runCommand(roster, invocation) {
       return done(`已登记「${created.entry.name}」（${created.entry.id}），workspace：${created.entry.workspace}`)
     }
     case 'show':
+    case 'handoff':
     case 'brief': {
       const found = roster.get(rest)
       if (found.error !== undefined) return fail(found.error)
@@ -1195,7 +1198,7 @@ export function apply(ctx) {
       const mine = entries.find((entry) => entry.sessionId !== undefined && entry.sessionId === sessionId)
       const lines = [
         '## 长线任务花名册（dsh-longtasks）',
-        '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask brief <id> 取交接简报。',
+        '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask handoff <id> 取交接简报（brief 是旧名，仍可用）。',
         '每个任务的 workspace 目录就是它自己的工作区，结构完全由任务决定；插件不规定格式，用普通文件工具自己组织。',
         'brief（核心思想）只写稳定的东西；阶段结束用 longtask note 记一行结论，并 update 下一步。',
         '工作原则：',
