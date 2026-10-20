@@ -304,7 +304,18 @@ describe('工具与系统提示', () => {
     const long = 'x'.repeat(500)
     const noted = await tool.execute({ action: 'note', target: created.entry.id, text: long },
       { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
-    assert.match(tool.output.render({}, noted)[0].text, /建议把细节移到 workspace 的文件/)
+    assert.match(tool.output.render({}, noted)[0].text, /细节写进 workspace 的主题文件/)
+  })
+
+  it('记录堆多而 workspace 还空着时，提示按线索拆文件', async () => {
+    const { tool } = await applyOnce()
+    const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } }
+    const created = await tool.execute({ action: 'create', name: '堆记录', brief: '核心' }, exec)
+    for (let i = 0; i < 8; i += 1) {
+      await tool.execute({ action: 'note', target: created.entry.id, text: `第 ${i + 1} 条短结论` }, exec)
+    }
+    const last = await tool.execute({ action: 'note', target: created.entry.id, text: '第 9 条短结论' }, exec)
+    assert.match(tool.output.render({}, last)[0].text, /按线索拆成 topics\/<slug>\.md/)
   })
 
   it('list 只回摘要，不把整份工作记录塞回去', async () => {

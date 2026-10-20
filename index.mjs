@@ -42,7 +42,8 @@ export const PRINCIPLES = [
   '不要放进 worktree 或临时目录：git worktree、/tmp、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。',
   'brief 只写稳定的核心思想（是什么、为什么、硬约束）；进度和结论用 longtask note，一轮工具调用不值得记。',
   'workspace 结构自己定，但要让接手的人一眼找到「当前状态」和「下一步」。',
-  'TASK.md 是索引不是仓库：核心思想、下一步、一行结论留在里面；台账、长结论、日志拆成 workspace 里的独立文件（如 ledger.md、decisions.md、notes/2026-10.md），TASK.md 里只留一行指针。',
+  'TASK.md 是索引不是仓库：核心思想、下一步、最近 1-3 条一行结论留在里面，别的都出去。',
+  '长记录按逻辑拆，不按日期堆：每个线索/问题一个文件（topics/<slug>.md），决策与理由进 decisions.md，可复用的步骤进 runbook.md，当前在办的事进 ledger.md；再写一个 README.md 列清每个文件是什么。同一类内容先看有没有现成文件，有就并进去，不要一件事一个文件。',
   '依赖外部资产（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。',
   '用户在本会话给出的提醒、约束、决定、纠正，当场用 longtask note 记到对应任务的记录里，不要只留在对话中；只影响某条任务就记那条，影响面超出所有任务才新建一条。',
 ]
@@ -879,9 +880,13 @@ function renderToolText(value, roster) {
     case 'note': {
       const count = Array.isArray(value.entry.notes) ? value.entry.notes.length : 0
       const text = typeof value.entry?.notes?.[0]?.text === 'string' ? value.entry.notes[0].text : ''
+      const files = roster.workspaceFiles(value.entry, 50)
+      const many = count >= 8 && files.length < 3
       const hint = text.length > 400
-        ? `\n这条有 ${text.length} 字：建议把细节移到 workspace 的文件（如 ledger.md、notes/<月>.md），note 里只留一行结论 + 文件名。`
-        : ''
+        ? `\n这条有 ${text.length} 字：细节写进 workspace 的主题文件（topics/<slug>.md、decisions.md、runbook.md），note 里只留一行结论 + 文件名。`
+        : many
+          ? `\n这条任务已有 ${count} 条记录、workspace 里只有 ${files.length} 个文件：建议按线索拆成 topics/<slug>.md + README.md，TASK.md 只留最近结论。`
+          : ''
       return `已记一条阶段性结论（共 ${count} 条）：${value.entry.name}${hint}`
     }
     case 'archive':
@@ -1254,7 +1259,7 @@ export function apply(ctx) {
         '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask handoff <id> 取交接简报（brief 是旧名，仍可用）。',
         '每个任务的 workspace 目录就是它自己的工作区，结构完全由任务决定；插件不规定格式，用普通文件工具自己组织。',
         'brief（核心思想）只写稳定的东西；阶段结束用 longtask note 记一行结论，并 update 下一步。',
-        'TASK.md 是索引不是仓库：台账、长记录、日志拆到 workspace 的独立文件里，TASK.md 只留一行指针。',
+        'TASK.md 是索引不是仓库：长记录按线索拆成 topics/<slug>.md、decisions.md、runbook.md、ledger.md，并写 README.md 说明每个文件是什么；TASK.md 只留最近 1-3 条一行结论。',
         '工作原则：',
         ...PRINCIPLES.map((line) => `- ${line}`),
       ]

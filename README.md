@@ -65,8 +65,22 @@ session that owns one.
 2. **不要放进 worktree 或临时目录**：git worktree、`/tmp`、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。
 3. **brief 只写稳定的核心思想**（是什么、为什么、硬约束）；进度和结论用 `longtask note`，一轮工具调用不值得记。
 4. **workspace 结构自己定**，但要让接手的人一眼找到「当前状态」和「下一步」。
-5. **TASK.md 是索引不是仓库**：核心思想、下一步、一行结论留在里面；台账、长结论、日志拆成 workspace 里的独立文件（`ledger.md`、`decisions.md`、`notes/2026-10.md`），TASK.md 里只留一行指针。`longtask note` 写超过 400 字会被提示"细节该进文件"。
-6. **依赖外部资产**（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。
+5. **TASK.md 是索引不是仓库**：核心思想、下一步、最近 1-3 条一行结论留在里面，别的都出去。
+6. **长记录按逻辑拆，不按日期堆**：每个线索/问题一个文件（`topics/<slug>.md`），决策与理由进 `decisions.md`，可复用步骤进 `runbook.md`，当前在办的事进 `ledger.md`，再写一个 `README.md` 列清每个文件是什么；同一类内容先并进已有文件，不要一件事一个文件。
+
+`longtask` 会机械化地提醒这两种情况：单条 `note` 超过 400 字 → "细节写进主题文件"；记录已超过 8 条而 workspace 还不到 3 个文件 → "建议按线索拆成 `topics/<slug>.md` + `README.md`"。
+
+一个长任务的 workspace 通常长这样：
+
+```
+TASK.md          核心思想 + 下一步 + 最近结论
+README.md        每个文件是什么、当前状态
+ledger.md        在办事项清单
+topics/d-007-*.md 单条线索的来龙去脉
+decisions.md     决策与理由
+runbook.md       可复用的步骤
+```
+7. **依赖外部资产**（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。
 
 ### 用户提醒的兜底
 
