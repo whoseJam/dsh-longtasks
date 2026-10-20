@@ -13,7 +13,7 @@
  * 一律不碰，agent 用普通文件工具自己去组织。
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { homedir, platform } from 'node:os'
@@ -1071,9 +1071,19 @@ export function openDirectory(target) {
   }
   if (!stat.isDirectory()) throw new Error(`不是目录：${path}`)
   const command = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'explorer' : 'xdg-open'
+  logOpen(`request command=${command} path=${path}`)
   const child = spawn(command, [path], { detached: true, stdio: 'ignore' })
+  child.on('error', (error) => { logOpen(`spawn error: ${error?.message ?? String(error)}`) })
+  child.on('close', (code) => { logOpen(`exit code=${code === null ? 'null' : code}`) })
   child.unref()
   return path
+}
+
+/** 诊断日志：出问题时看 ~/.dsh/longtasks/open.log。 */
+function logOpen(line) {
+  try {
+    appendFileSync(join(rootDir(), 'open.log'), `${new Date().toISOString()} ${line}\n`, 'utf8')
+  } catch { /* 日志失败不影响开目录本身 */ }
 }
 
 function sendJson(res, status, value) {
