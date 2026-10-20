@@ -1,0 +1,4 @@
+# dsh-longtasks bundle patch：挂载长线任务花名册插件。
+- insert:
+    - id: longtasks
+      name: dsh-longtasks

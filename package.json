@@ -1,0 +1,66 @@
+{
+  "name": "dsh-longtasks",
+  "version": "0.1.0",
+  "description": "长线任务花名册：把跨天/跨会话的长期任务固定成一条档案（目标、状态、下一步、交接日志、常驻会话），并提供左侧栏看板与 longtask 工具",
+  "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "client",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "long-running",
+    "task-roster",
+    "session"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.1-0 <0.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whoseJam/dsh-longtasks.git"
+  },
+  "homepage": "https://github.com/whoseJam/dsh-longtasks#readme",
+  "bugs": {
+    "url": "https://github.com/whoseJam/dsh-longtasks/issues"
+  },
+  "author": "whoseJam",
+  "publishConfig": {
+    "access": "public"
+  }
+}
