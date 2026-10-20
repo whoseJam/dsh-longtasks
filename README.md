@@ -89,6 +89,8 @@ session that owns one.
 行悬停才浮出动作；点任务名回到负责它的会话；展开可以看到核心思想、最近记录和 workspace 文件。
 界面文案走 `ctx.locale`（中文 / English 各一份词典），跟随 DSH 的语言设置切换。
 右上角「新建」可以直接建一条任务（这时还没有会话，到目标会话里跑 `/longtask bind <id>` 补绑定）。
+每行的「打开目录」把这个任务的 workspace 交给系统文件管理器（走 Host 的 `openWorkspacePath`；
+纯浏览器环境没有桌面能力时，退化成复制路径）。
 
 ![浅色](docs/preview-light.jpg)
 
@@ -97,6 +99,8 @@ session that owns one.
 ![深色](docs/preview-dark.jpg)
 
 ![新建任务](docs/preview-new.jpg)
+
+![打开 workspace](docs/preview-workspace.jpg)
 
 ![English UI](docs/preview-en.jpg)
 

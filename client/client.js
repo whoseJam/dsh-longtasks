@@ -80,6 +80,10 @@
         recentNotes: '最近记录',
         workspaceTitle: 'workspace（结构由这个任务自己决定）',
         bindTip: '在目标会话运行 /longtask bind {id}',
+        openWorkspace: '打开目录',
+        openWorkspaceHint: '在文件管理器里打开这个任务的 workspace',
+        workspaceFailed: '打开目录失败：{error}',
+        workspaceCopied: '已复制 workspace 路径：{path}',
       }
 
       const en = {
@@ -134,6 +138,10 @@
         recentNotes: 'Recent notes',
         workspaceTitle: 'workspace (its structure is up to the task)',
         bindTip: 'Run /longtask bind {id} in the target session',
+        openWorkspace: 'Open folder',
+        openWorkspaceHint: 'Open this task workspace in the file manager',
+        workspaceFailed: 'Could not open the folder: {error}',
+        workspaceCopied: 'Workspace path copied: {path}',
       }
 
       const STATUS_KEY = {
@@ -386,6 +394,16 @@
   color: var(--dsw-alias-label-secondary);
   white-space: pre-wrap;
 }
+.lt-pathBtn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+}
+.lt-pathBtn:hover { color: var(--dsw-alias-link); text-decoration: underline; }
 .lt-path {
   margin: 4px 0 0;
   font-size: 11.5px;
@@ -629,6 +647,28 @@
             }
           }, [t])
 
+          const openWorkspace = useCallback(async (entry) => {
+            const path = entry.workspace
+            if (typeof path !== 'string' || path.length === 0) return
+            // 可选服务：浏览器里没有桌面能力，退化成复制路径。
+            const remote = typeof ctx.get === 'function' ? ctx.get('remote') : undefined
+            const sessionRemote = remote === undefined || remote === null ? undefined : remote.session
+            try {
+              if (sessionRemote !== undefined && typeof sessionRemote.openWorkspacePath === 'function') {
+                const result = await sessionRemote.openWorkspacePath({ path, action: 'open' })
+                if (result !== null && result !== undefined && result.ok === true) return
+              }
+            } catch (error) {
+              console.warn('dsh-longtasks: openWorkspacePath failed', error)
+            }
+            try {
+              await copyText(path)
+              setNotice({ kind: 'ok', text: t('workspaceCopied', { path }) })
+            } catch (error) {
+              setNotice({ kind: 'error', text: t('workspaceFailed', { error: error instanceof Error ? error.message : String(error) }) })
+            }
+          }, [t])
+
           const copyBrief = useCallback(async (entry) => {
             try {
               await copyText(entry.handoff || entry.brief || entry.name)
@@ -728,8 +768,14 @@
                       h('p', { className: 'lt-logLabel' }, t('workspaceTitle')),
                       h('ul', { className: 'lt-notes' }, files.slice(0, 12).map((file, index) => h('li', { key: index, className: 'lt-note' },
                         h('span', { className: 'lt-noteText' }, file)))),
-                      h('p', { className: 'lt-path', title: entry.workspace }, entry.workspace))
-                    : h('p', { className: 'lt-path', title: entry.workspace }, entry.workspace ?? ''))
+                      h('button', {
+                        type: 'button', className: 'lt-path lt-pathBtn', title: t('openWorkspaceHint'),
+                        onClick: () => { void openWorkspace(entry) },
+                      }, entry.workspace))
+                    : h('button', {
+                      type: 'button', className: 'lt-path lt-pathBtn', title: t('openWorkspaceHint'),
+                      onClick: () => { void openWorkspace(entry) },
+                    }, entry.workspace ?? ''))
                 : null),
             h('div', { className: 'lt-actions' },
               h('button', {
@@ -737,6 +783,11 @@
                 title: t('expandHint'),
                 onClick: () => { setExpanded((value) => ({ ...value, [entry.id]: value[entry.id] !== true })) },
               }, t('notesCount', { n: notes.length })),
+              h('button', {
+                type: 'button', className: 'lt-btn quiet', disabled: busy || !entry.workspace,
+                title: t('openWorkspaceHint'),
+                onClick: () => { void openWorkspace(entry) },
+              }, t('openWorkspace')),
               h('button', {
                 type: 'button', className: 'lt-btn quiet',
                 onClick: () => { void copyBrief(entry) },
