@@ -803,6 +803,7 @@ function makeTool(roster) {
         case 'note': {
           const noted = roster.addNote(target, args?.text)
           if (noted.error !== undefined) return { ok: false, action, error: noted.error }
+          clearPendingReminders(facts.sessionId)
           return { ok: true, action, entry: noted.entry }
         }
         case 'archive': {
@@ -944,6 +945,60 @@ export function runCommand(roster, invocation) {
   }
 }
 
+/** 用户话里像「纠正/约束/决定」的信号：命中就要求当场落库。 */
+const RECORD_HINT = /(不要|别|应该|必须|记住|以后|规则|原则|注意|改成|务必|记得|不能|不许)|(\bdon't\b|\bdo not\b|\bmust\b|\balways\b|\bnever\b|\bremember\b|\bshould\b)/i
+
+/** 待落库的用户提醒：sessionId → [{at, text}]，最多留 3 条。 */
+export const pendingReminders = new Map()
+
+const PENDING_TTL_MS = 2 * 60 * 60 * 1000
+
+function textOfUserMessage(data) {
+  const content = data?.message?.content ?? data?.content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((block) => block !== null && typeof block === 'object' && block.type === 'text' && typeof block.text === 'string')
+    .map((block) => block.text)
+    .join('\n')
+    .trim()
+}
+
+/**
+ * 兜底：用户说了像「纠正/约束/决定」的话，而本会话又绑着长线任务，就把它记成待落库提醒。
+ * 下一轮系统提示会点名，等模型真的写了 note 再清掉——不自动写档案，避免替模型编内容。
+ */
+export function handleUserMessage(roster, session, event) {
+  if (event?.type !== 'user/message') return
+  const sessionId = typeof session?.id === 'string' ? session.id : undefined
+  if (sessionId === undefined) return
+  const text = textOfUserMessage(event.data)
+  if (text.length === 0 || text.length > 600) return
+  if (!RECORD_HINT.test(text)) return
+  const bound = roster.all().find(
+    (entry) => entry.sessionId === sessionId && entry.status !== 'archived',
+  )
+  if (bound === undefined) return
+  const list = pendingReminders.get(sessionId) ?? []
+  if (list.some((item) => item.text === text)) return
+  list.push({ at: nowMs(), text })
+  pendingReminders.set(sessionId, list.slice(-3))
+}
+
+/** 模型把提醒记进档案后清空（由 longtask note 触发）。 */
+export function clearPendingReminders(sessionId) {
+  if (typeof sessionId === 'string') pendingReminders.delete(sessionId)
+}
+
+/** 取一条会话里还没过期的待落库提醒。 */
+function livePending(sessionId) {
+  if (typeof sessionId !== 'string') return []
+  const list = pendingReminders.get(sessionId)
+  if (list === undefined) return []
+  const fresh = list.filter((item) => nowMs() - item.at < PENDING_TTL_MS)
+  if (fresh.length === 0) pendingReminders.delete(sessionId)
+  return fresh
+}
+
 function withService(ctx, serviceName, fn) {
   const existing = ctx.get(serviceName)
   if (existing !== undefined && existing !== null) {
@@ -1070,6 +1125,15 @@ export function apply(ctx) {
   ctx.tools.register(makeTool(roster))
   registerCommands(ctx, roster)
 
+  // 兜底：用户给了纠正类的话但没落库，就在下一轮提示里点名。
+  ctx.on('session/event', (session, event) => {
+    try {
+      handleUserMessage(roster, session, event)
+    } catch (error) {
+      console.warn(`[dsh-longtasks] 提醒捕获失败：${error?.message ?? String(error)}`)
+    }
+  })
+
   ctx.systemPrompt.section({
     name: 'dsh-longtasks:roster',
     order: -45,
@@ -1100,6 +1164,16 @@ export function apply(ctx) {
       ]
       if (mine !== undefined) {
         lines.splice(4, 0, `本会话负责的任务：「${mine.name}」（id=${mine.id}）——用户这轮给的提醒、纠正、决定，记到它名下（longtask note），不要记到别的任务或只留在对话里。`)
+        const pending = livePending(sessionId)
+        if (pending.length > 0) {
+          lines.push('')
+          lines.push(`## 待落库的用户提醒（记进「${mine.name}」后本节自动消失）`)
+          for (const item of pending) {
+            const text = item.text.length > 200 ? `${item.text.slice(0, 200)}…` : item.text
+            lines.push(`- ${formatTime(item.at)} 用户：${text}`)
+          }
+          lines.push('处理方式：先用 longtask note 把上面每一条记进这条任务（一条一行，注明是用户提醒），再继续干活。')
+        }
       }
       for (const entry of shown) {
         const star = entry.sessionId !== undefined && entry.sessionId === sessionId ? '★ ' : ''

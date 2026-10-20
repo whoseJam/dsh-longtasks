@@ -7,7 +7,7 @@ import { after, beforeEach, describe, it } from 'node:test'
 const root = mkdtempSync(join(tmpdir(), 'dsh-longtasks-'))
 process.env.DSH_LONGTASKS_DIR = root
 
-const { Roster, formatBrief, rosterDir } = await import('../index.mjs')
+const { Roster, formatBrief, rosterDir, handleUserMessage, pendingReminders } = await import('../index.mjs')
 
 const facts = { sessionId: 'session-test-1', cwd: '/tmp/project' }
 
@@ -230,6 +230,56 @@ describe('工具与系统提示', () => {
     assert.match(rendered, /用户在本会话给出的提醒/)
     // 本会话绑定的任务被点名，提醒该往哪记一目了然
     assert.match(rendered, /本会话负责的任务：「原则检查」/)
+  })
+
+  it('用户提醒没落库时，下一轮系统提示点名', async () => {
+    reset()
+    const roster = fresh()
+    roster.create({ name: '要被提醒的', brief: '核心' }, facts)
+    pendingReminders.clear()
+    handleUserMessage(roster, { id: 'session-test-1' }, {
+      type: 'user/message',
+      data: { message: { content: [{ type: 'text', text: '以后任务状态不要放进 worktree' }] } },
+    })
+    const { section } = await applyOnce()
+    const rendered = section.text({ agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
+    assert.match(rendered, /待落库的用户提醒/)
+    assert.match(rendered, /不要放进 worktree/)
+  })
+
+  it('记了 note 之后提醒自动消失', async () => {
+    reset()
+    const roster = fresh()
+    const { entry } = roster.create({ name: '待清空', brief: '核心' }, facts)
+    pendingReminders.clear()
+    handleUserMessage(roster, { id: 'session-test-1' }, {
+      type: 'user/message',
+      data: { message: { content: [{ type: 'text', text: '以后先跑测试再提交' }] } },
+    })
+    const { tool, section } = await applyOnce()
+    const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } }
+    const before = section.text({ agent: { session: { id: 'session-test-1' } } })
+    assert.match(before, /待落库的用户提醒/)
+    await tool.execute({ action: 'note', target: entry.id, text: '用户提醒：以后先跑测试再提交' }, exec)
+    const after = section.text({ agent: { session: { id: 'session-test-1' } } })
+    assert.doesNotMatch(after, /待落库的用户提醒/)
+  })
+
+  it('普通闲聊不触发提醒；未绑定任务的会话也不触发', async () => {
+    reset()
+    const roster = fresh()
+    roster.create({ name: '安静点', brief: '核心' }, facts)
+    pendingReminders.clear()
+    handleUserMessage(roster, { id: 'session-test-1' }, {
+      type: 'user/message',
+      data: { message: { content: [{ type: 'text', text: '今天天气不错，继续吧' }] } },
+    })
+    assert.equal(pendingReminders.size, 0)
+    handleUserMessage(roster, { id: 'session-other' }, {
+      type: 'user/message',
+      data: { message: { content: [{ type: 'text', text: '以后不要这样做' }] } },
+    })
+    assert.equal(pendingReminders.size, 0)
   })
 
   it('久未更新的条目在系统提示里带警示', async () => {
