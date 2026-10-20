@@ -1,6 +1,5 @@
 # dsh-longtasks
 
-[![ci](https://github.com/whoseJam/dsh-longtasks/actions/workflows/ci.yml/badge.svg)](https://github.com/whoseJam/dsh-longtasks/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/dsh-longtasks)](https://www.npmjs.com/package/dsh-longtasks)
 [![downloads](https://img.shields.io/npm/dm/dsh-longtasks)](https://www.npmjs.com/package/dsh-longtasks)
 
@@ -150,8 +149,8 @@ cp -R ~/Desktop/dsh-longtasks ~/.dsh/profiles/desktop/node_modules/dsh-longtasks
 ## 开发
 
 ```bash
-npm test          # node --test：档案读写、自由结构保留、迁移、workspace、命令、工具、提示注入
-npm pack --dry-run
+npm pack --dry-run    # 看打进去的文件
+node --test test/*.test.mjs   # 本地有一份测试，不随仓库发布
 ```
 
 两个半侧的加载方式不同：
@@ -165,8 +164,8 @@ npm pack --dry-run
 ## 发布
 
 ```bash
-npm test && npm pack --dry-run
-npm publish --access public        # 或打 tag 让 .github/workflows/publish.yml 发（带 provenance）
+npm pack --dry-run
+npm publish --access public
 ```
 
 **兼容性门禁走 `peerDependencies`，不是 `engines.dsh`。** 本包声明

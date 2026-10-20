@@ -1,3 +1,6 @@
 node_modules/
 *.tgz
 .DS_Store
+
+# 本地验证用，不进仓库
+test/

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- 仓库精简：移除 `.github/`（CI / publish workflow）与 `test/`，测试只在本地保留、不随仓库发布；`package.json` 不再声明 test 脚本。
+
+
 ## 0.1.5
 
 - `longtask note` 的超长提醒阈值从 400 字放宽到 **5000 字**：5000 字以内的结论可以留在 note 里，超过才提示把细节拆到主题文件。
