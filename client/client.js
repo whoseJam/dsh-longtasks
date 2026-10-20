@@ -304,13 +304,12 @@
   color: var(--dsw-alias-label-tertiary);
 }
 .lt-emptyTitle { color: var(--dsw-alias-label-secondary); }
-.lt-empty code, .lt-foot code {
+.lt-empty code {
   padding: 1px 5px;
   border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-markdown-inline-code);
   font-size: 12px;
 }
-.lt-foot { margin: 0; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }
 .lt-loading { margin: 0; font-size: 13px; line-height: 20px; color: var(--dsw-alias-label-tertiary); }
 `
 
@@ -647,13 +646,7 @@
               notice !== null
                 ? h('p', { className: `lt-notice${notice.kind === 'error' ? ' error' : ''}` }, notice.text)
                 : null,
-              body,
-              h('p', { className: 'lt-foot' },
-                '每个任务一个目录：',
-                h('code', null, '~/.dsh/longtasks/tasks/<id>/'),
-                '，',
-                h('code', null, 'TASK.md'),
-                ' 存核心思想与记录，其余文件由这个任务自己组织。'))
+              body)
           )
         }
       }
