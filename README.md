@@ -39,7 +39,7 @@ session that owns one.
 
 ## 给模型什么
 
-1. **`longtask` 工具**：`create` / `list` / `show` / `update` / `note` / `brief` / `archive` / `delete`。
+1. **`longtask` 工具**：`create` / `list` / `show` / `update` / `note` / `handoff` / `archive` / `delete`（`brief` 是 `handoff` 的旧名）。
    `create` 会分配任务目录并返回 workspace 路径；`show` 直接返回 `TASK.md` 原文，
    于是 agent 想怎么改档案结构都行（插件只重写 frontmatter 和「核心思想 / 工作记录」两节）。
 2. **系统提示注入**：每个新会话开工时，提示里就带着花名册——状态、核心思想的下一步、workspace 路径，
@@ -50,7 +50,7 @@ session that owns one.
 /longtask                       列出全部
 /longtask note <id> <一行结论>   记一条阶段性结论
 /longtask done|waiting|active|archive <id>
-/longtask brief <id>            取交接简报（含 workspace 文件清单）
+/longtask handoff <id>           取交接简报（含 workspace 文件清单；brief 为旧名）
 /longtask bind <id>              把任务绑到当前会话（面板新建的任务用它补绑定）
 /longtask show <id>             打印 TASK.md 原文
 /longtask new <名字>            以当前会话新建
@@ -61,7 +61,7 @@ session that owns one.
 插件不规定 workspace 的结构（修 bug 的台账、PR 审查的状态机、调研的实验记录，形状本来就不同），
 但下面几条是共同的，会被注入到每个长线任务会话的系统提示里：
 
-1. **状态归任务自己**：台账、结论、脚本放这个任务的 workspace（`tasks/<id>/`），不要放共享 skill 目录或别人的仓库目录。
+1. **状态归任务自己**：台账、结论、脚本放这个任务的 workspace（`~/.dsh/longtasks/<id>/`），不要放共享 skill 目录或别人的仓库目录。
 2. **不要放进 worktree 或临时目录**：git worktree、`/tmp`、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。
 3. **brief 只写稳定的核心思想**（是什么、为什么、硬约束）；进度和结论用 `longtask note`，一轮工具调用不值得记。
 4. **workspace 结构自己定**，但要让接手的人一眼找到「当前状态」和「下一步」。
