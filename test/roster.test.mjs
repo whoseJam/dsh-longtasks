@@ -188,7 +188,9 @@ describe('工具与系统提示', () => {
     const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp/project' } } } }
     const created = await tool.execute({ action: 'create', name: '跑通工具', brief: '核心思想', kind: 'bugfix' }, exec)
     assert.equal(created.ok, true)
-    assert.match(tool.output.render({}, created)[0].text, /workspace/)
+    const createdText = tool.output.render({}, created)[0].text
+    assert.match(createdText, /workspace/)
+    assert.match(createdText, /不要放进 worktree/)
 
     await tool.execute({ action: 'note', target: created.entry.id, text: '第一阶段结论' }, exec)
     const listed = await tool.execute({ action: 'list' }, exec)
@@ -202,6 +204,16 @@ describe('工具与系统提示', () => {
     const brief = await tool.execute({ action: 'brief', target: created.entry.id }, exec)
     assert.match(brief.brief, /第一阶段结论/)
     assert.match(brief.brief, /workspace/)
+  })
+
+  it('系统提示里带着工作原则（状态归任务、不进 worktree）', async () => {
+    const roster = fresh()
+    roster.create({ name: '原则检查', brief: '核心' }, facts)
+    const { section } = await applyOnce()
+    const rendered = section.text({ agent: { session: { id: 's', header: { cwd: '/tmp' } } } })
+    assert.match(rendered, /工作原则/)
+    assert.match(rendered, /不要放进 worktree 或临时目录/)
+    assert.match(rendered, /状态归任务自己/)
   })
 
   it('久未更新的条目在系统提示里带警示', async () => {

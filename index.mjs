@@ -32,6 +32,18 @@ const STATUS_LABEL = {
 
 const SECTIONS = { brief: '核心思想', log: '工作记录' }
 
+/**
+ * 长线任务的工作原则。插件不规定工作区结构，但必须说清「什么东西该放哪」——
+ * 否则 agent 会把状态写进 worktree、临时目录或共享 skill 目录，交接口一过就找不回来。
+ */
+export const PRINCIPLES = [
+  '状态归任务自己：台账、结论、脚本放这个任务的 workspace（tasks/<id>/），不要放共享 skill 目录或别人的仓库目录。',
+  '不要放进 worktree 或临时目录：git worktree、/tmp、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。',
+  'brief 只写稳定的核心思想（是什么、为什么、硬约束）；进度和结论用 longtask note，一轮工具调用不值得记。',
+  'workspace 结构自己定，但要让接手的人一眼找到「当前状态」和「下一步」。',
+  '依赖外部资产（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。',
+]
+
 const MAX_NAME = 120
 const MAX_TEXT = 8000
 const MAX_NOTE_CHARS = 8000
@@ -774,6 +786,7 @@ function renderToolText(value, roster) {
       return [
         `已登记长线任务「${value.entry.name}」（${value.entry.id}），绑定会话：${value.entry.sessionId ?? '未绑定'}`,
         `workspace：${value.entry.workspace}（结构由你决定，用普通文件工具组织）`,
+        '原则：状态放这个 workspace，不要放进 worktree 或临时目录；brief 只写核心思想，进度用 note。',
       ].join('\n')
     case 'update':
       return value.changed === false
@@ -1028,6 +1041,8 @@ export function apply(ctx) {
         '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask brief <id> 取交接简报。',
         '每个任务的 workspace 目录就是它自己的工作区，结构完全由任务决定；插件不规定格式，用普通文件工具自己组织。',
         'brief（核心思想）只写稳定的东西；阶段结束用 longtask note 记一行结论，并 update 下一步。',
+        '工作原则：',
+        ...PRINCIPLES.map((line) => `- ${line}`),
       ]
       for (const entry of shown) {
         const star = entry.sessionId !== undefined && entry.sessionId === sessionId ? '★ ' : ''
