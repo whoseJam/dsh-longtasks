@@ -7,7 +7,7 @@ import { after, beforeEach, describe, it } from 'node:test'
 const root = mkdtempSync(join(tmpdir(), 'dsh-longtasks-'))
 process.env.DSH_LONGTASKS_DIR = root
 
-const { Roster, formatBrief, rosterDir, handleUserMessage, pendingReminders } = await import('../index.mjs')
+const { Roster, formatBrief, rosterDir, handleUserMessage, pendingReminders, openDirectory } = await import('../index.mjs')
 
 const facts = { sessionId: 'session-test-1', cwd: '/tmp/project' }
 
@@ -231,6 +231,16 @@ describe('HTTP 数据面', () => {
     const bad = await call(routes.get('/api/longtasks/action'), { method: 'POST', body: { action: 'explode' } })
     assert.equal(bad.status, 400)
     assert.match(bad.payload.error, /未知 action/)
+  })
+})
+
+describe('打开目录', () => {
+  it('拒绝花名册目录以外的路径', () => {
+    assert.throws(() => openDirectory('/tmp'), /只允许打开花名册目录内的路径/)
+  })
+
+  it('拒绝不存在的目录', () => {
+    assert.throws(() => openDirectory(join(root, 'lt-does-not-exist')), /目录不存在/)
   })
 })
 

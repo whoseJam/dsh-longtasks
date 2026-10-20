@@ -648,24 +648,16 @@
           }, [t])
 
           const openWorkspace = useCallback(async (entry) => {
-            const path = entry.workspace
-            if (typeof path !== 'string' || path.length === 0) return
-            // 可选服务：浏览器里没有桌面能力，退化成复制路径。
-            const remote = typeof ctx.get === 'function' ? ctx.get('remote') : undefined
-            const sessionRemote = remote === undefined || remote === null ? undefined : remote.session
+            if (typeof entry.workspace !== 'string' || entry.workspace.length === 0) return
+            setNotice(null)
             try {
-              if (sessionRemote !== undefined && typeof sessionRemote.openWorkspacePath === 'function') {
-                const result = await sessionRemote.openWorkspacePath({ path, action: 'open' })
-                if (result !== null && result !== undefined && result.ok === true) return
-              }
+              // 走插件宿主自己的 /open：它直接调系统文件管理器，不再依赖 DSH 的桌面能力
+              await postAction({ action: 'open', id: entry.id })
             } catch (error) {
-              console.warn('dsh-longtasks: openWorkspacePath failed', error)
-            }
-            try {
-              await copyText(path)
-              setNotice({ kind: 'ok', text: t('workspaceCopied', { path }) })
-            } catch (error) {
-              setNotice({ kind: 'error', text: t('workspaceFailed', { error: error instanceof Error ? error.message : String(error) }) })
+              setNotice({
+                kind: 'error',
+                text: t('workspaceFailed', { error: error instanceof Error ? error.message : String(error) }),
+              })
             }
           }, [t])
 

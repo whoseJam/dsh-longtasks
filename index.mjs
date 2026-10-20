@@ -14,9 +14,10 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { homedir, platform } from 'node:os'
+import { join, resolve, sep } from 'node:path'
 
 export const name = 'longtasks'
 export const inject = ['tools', 'systemPrompt']
@@ -1050,6 +1051,31 @@ function withService(ctx, serviceName, fn) {
   })
 }
 
+/**
+ * 用系统文件管理器打开一个目录。
+ * 不依赖 DSH 的 openWorkspacePath：那条链路要过 host 的路径校验与桌面能力检查，
+ * 任一不满足就静默失败；插件宿主本来就跑在用户机器上，直接调系统命令更可靠。
+ * 只允许打开花名册根目录内部的路径。
+ */
+export function openDirectory(target) {
+  const path = resolve(target)
+  const root = resolve(rootDir())
+  if (path !== root && !path.startsWith(`${root}${sep}`)) {
+    throw new Error('只允许打开花名册目录内的路径')
+  }
+  let stat
+  try {
+    stat = statSync(path)
+  } catch {
+    throw new Error(`目录不存在：${path}`)
+  }
+  if (!stat.isDirectory()) throw new Error(`不是目录：${path}`)
+  const command = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'explorer' : 'xdg-open'
+  const child = spawn(command, [path], { detached: true, stdio: 'ignore' })
+  child.unref()
+  return path
+}
+
 function sendJson(res, status, value) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -1120,6 +1146,16 @@ function registerRoutes(ctx, webServer, roster) {
         const action = typeof body.action === 'string' ? body.action : ''
         const id = typeof body.id === 'string' ? body.id : undefined
         let result
+        if (action === 'open') {
+          const found = roster.get(id)
+          if (found.error !== undefined) {
+            sendJson(res, 404, { ok: false, error: found.error })
+            return
+          }
+          const path = openDirectory(found.entry.workspace ?? roster.taskDir(found.entry.id))
+          sendJson(res, 200, { ok: true, path })
+          return
+        }
         if (action === 'create') result = roster.create({ name: body.name, brief: body.brief, kind: body.kind }, {})
         else if (action === 'update') result = roster.update(id, body)
         else if (action === 'note') result = roster.addNote(id, body.text)
