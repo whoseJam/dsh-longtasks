@@ -4,7 +4,7 @@
 
 首个版本。
 
-- **一个任务 = 一个目录**：`tasks/<id>/TASK.md` 存档案，同目录下的其余文件是该任务自由组织的 workspace。
+- **一个任务 = 一个目录**：`<id>/TASK.md` 存档案，同目录下的其余文件是该任务自由组织的 workspace。
 - **brief 与 workspace 分离**：brief 只写稳定的核心思想；workspace 结构由任务自己决定，插件不解析、不规定格式。
 - `longtask` 工具：create / list / show / update / note / brief / archive / delete；`show` 返回 TASK.md 原文。
 - `/longtask` 命令：list / new / show / brief / note / active / waiting / done / archive。

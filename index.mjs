@@ -37,11 +37,12 @@ const SECTIONS = { brief: '核心思想', log: '工作记录' }
  * 否则 agent 会把状态写进 worktree、临时目录或共享 skill 目录，交接口一过就找不回来。
  */
 export const PRINCIPLES = [
-  '状态归任务自己：台账、结论、脚本放这个任务的 workspace（tasks/<id>/），不要放共享 skill 目录或别人的仓库目录。',
+  '状态归任务自己：台账、结论、脚本放这个任务的 workspace（~/.dsh/longtasks/<id>/），不要放共享 skill 目录或别人的仓库目录。',
   '不要放进 worktree 或临时目录：git worktree、/tmp、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。',
   'brief 只写稳定的核心思想（是什么、为什么、硬约束）；进度和结论用 longtask note，一轮工具调用不值得记。',
   'workspace 结构自己定，但要让接手的人一眼找到「当前状态」和「下一步」。',
   '依赖外部资产（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。',
+  '用户在本会话给出的提醒、约束、决定、纠正，当场用 longtask note 记到对应任务的记录里，不要只留在对话中；只影响某条任务就记那条，影响面超出所有任务才新建一条。',
 ]
 
 const MAX_NAME = 120
@@ -65,9 +66,9 @@ function rootDir() {
   return join(home, 'longtasks')
 }
 
-/** 任务目录的父目录。 */
+/** 任务目录的父目录：任务就是 longtasks 下的一级目录（~/.dsh/longtasks/<id>/）。 */
 export function rosterDir() {
-  return join(rootDir(), 'tasks')
+  return rootDir()
 }
 
 /** 旧版单文件 JSON 的位置（只在启动时迁移一次）。 */
@@ -292,8 +293,9 @@ function renderTaskFile(entry) {
 export class Roster {
   constructor(root = rootDir()) {
     this.root = root
-    this.tasks = join(root, 'tasks')
+    this.tasks = root
     this.indexFile = join(root, 'INDEX.md')
+    this.legacyTasks = join(root, 'tasks')
     this.cache = new Map()
   }
 
@@ -309,9 +311,71 @@ export class Roster {
     return join(this.tasks, id, 'TASK.md')
   }
 
-  /** 旧数据一次性迁移：roster.json 与早期的 tasks/<id>.md 都收进任务目录。 */
+  /**
+   * 旧数据一次性迁移，三种历史形态都收进 ~/.dsh/longtasks/<id>/：
+   *   - roster.json（单文件 JSON）
+   *   - tasks/<id>.md（平铺 markdown）
+   *   - tasks/<id>/（多一层目录的早期形态）
+   */
   migrateLegacy() {
     this.ensureDir()
+
+    // a) 多一层的 tasks/<id>/ → 上移
+    if (existsSync(this.legacyTasks)) {
+      for (const id of readdirSync(this.legacyTasks)) {
+        if (id.startsWith('.') || !/^lt-[0-9a-z]+$/i.test(id)) continue
+        const from = join(this.legacyTasks, id)
+        const to = this.taskDir(id)
+        try {
+          if (!existsSync(to)) renameSync(from, to)
+          else {
+            for (const name of readdirSync(from)) {
+              const target = join(to, name)
+              if (!existsSync(target)) renameSync(join(from, name), target)
+            }
+            rmSync(from, { recursive: true, force: true })
+          }
+        } catch (error) {
+          console.warn(`[dsh-longtasks] 迁移目录 ${id} 失败：${error?.message ?? String(error)}`)
+        }
+      }
+      try {
+        if (readdirSync(this.legacyTasks).length === 0) rmSync(this.legacyTasks, { recursive: true, force: true })
+      } catch { /* 留下也无害 */ }
+    }
+
+    // b) 平铺 tasks/<id>.md 或更早有过的根级 <id>.md
+    for (const dir of [this.legacyTasks, this.root]) {
+      if (!existsSync(dir)) continue
+      for (const fileName of readdirSync(dir)) {
+        if (!fileName.endsWith('.md') || fileName === 'INDEX.md') continue
+        const id = fileName.replace(/\.md$/, '')
+        if (!/^lt-[0-9a-z]+$/i.test(id)) continue
+        const flat = join(dir, fileName)
+        try {
+          if (!existsSync(this.taskFile(id))) {
+            mkdirSync(this.taskDir(id), { recursive: true })
+            renameSync(flat, this.taskFile(id))
+          }
+        } catch (error) {
+          console.warn(`[dsh-longtasks] 迁移 ${fileName} 失败：${error?.message ?? String(error)}`)
+        }
+      }
+    }
+
+    // a2) 修正 TASK.md 里过期的 workspace 指向（早期是 tasks/<id>）
+    for (const id of readdirSync(this.tasks)) {
+      if (id.startsWith('.') || !/^lt-[0-9a-z]+$/i.test(id)) continue
+      const file = this.taskFile(id)
+      if (!existsSync(file)) continue
+      try {
+        const text = readFileSync(file, 'utf8')
+        const fixed = text.replace(/^workspace: .*$/m, `workspace: ${this.taskDir(id)}`)
+        if (fixed !== text) writeFileSync(file, fixed, 'utf8')
+      } catch { /* 读不到就下次再说 */ }
+    }
+
+    // c) roster.json → 任务目录（同时补 TASK.md，原有工作区文件不动）
     const legacy = legacyFile()
     if (existsSync(legacy)) {
       try {
@@ -323,8 +387,11 @@ export class Roster {
             brief: raw?.brief ?? raw?.goal,
             workspace: raw?.workspace ?? this.defaultWorkspace(raw?.id),
           })
+          if (entry.id === undefined) continue
           mkdirSync(this.taskDir(entry.id), { recursive: true })
-          writeFileSync(this.taskFile(entry.id), renderTaskFile(entry), 'utf8')
+          if (!existsSync(this.taskFile(entry.id))) {
+            writeFileSync(this.taskFile(entry.id), renderTaskFile(entry), 'utf8')
+          }
         }
       } catch (error) {
         console.warn(`[dsh-longtasks] 旧版 roster.json 迁移失败，已跳过：${error?.message ?? String(error)}`)
@@ -332,20 +399,6 @@ export class Roster {
       try {
         renameSync(legacy, `${legacy}.migrated-${Date.now()}`)
       } catch { /* 留待下次启动重试 */ }
-    }
-
-    // 早期版本：tasks/<id>.md 平铺 → tasks/<id>/TASK.md
-    for (const fileName of readdirSync(this.tasks)) {
-      if (!fileName.endsWith('.md')) continue
-      const flat = join(this.tasks, fileName)
-      const id = fileName.replace(/\.md$/, '')
-      const dir = this.taskDir(id)
-      try {
-        mkdirSync(dir, { recursive: true })
-        renameSync(flat, join(dir, 'TASK.md'))
-      } catch (error) {
-        console.warn(`[dsh-longtasks] 迁移 ${fileName} 失败：${error?.message ?? String(error)}`)
-      }
     }
   }
 
@@ -359,7 +412,7 @@ export class Roster {
     const entries = []
     const seen = new Set()
     for (const id of readdirSync(this.tasks)) {
-      if (id.startsWith('.')) continue
+      if (id.startsWith('.') || !/^lt-[0-9a-z]+$/i.test(id)) continue
       const file = this.taskFile(id)
       let stat
       try {
@@ -372,7 +425,7 @@ export class Roster {
       if (entry === undefined) {
         try {
           entry = parseTaskFile(readFileSync(file, 'utf8'), stat.mtimeMs)
-          if (entry.workspace === undefined) entry.workspace = this.taskDir(id)
+          if (entry.workspace === undefined || !existsSync(entry.workspace)) entry.workspace = this.taskDir(id)
           this.cache.set(id, { mtime: stat.mtimeMs, entry })
         } catch (error) {
           console.warn(`[dsh-longtasks] 跳过无法读取的任务 ${id}：${error?.message ?? String(error)}`)
@@ -409,7 +462,7 @@ export class Roster {
       for (const entry of group) {
         const kind = entry.kind === undefined ? '' : `｜${entry.kind}`
         const step = entry.next.length > 0 ? `｜下一步：${entry.next}` : ''
-        lines.push(`- [${entry.name}](tasks/${entry.id}/TASK.md)${kind}｜更新 ${formatTime(entry.lastTouchedAt)}${step}`)
+        lines.push(`- [${entry.name}](${entry.id}/TASK.md)${kind}｜更新 ${formatTime(entry.lastTouchedAt)}${step}`)
       }
       lines.push('')
     }
@@ -786,7 +839,7 @@ function renderToolText(value, roster) {
       return [
         `已登记长线任务「${value.entry.name}」（${value.entry.id}），绑定会话：${value.entry.sessionId ?? '未绑定'}`,
         `workspace：${value.entry.workspace}（结构由你决定，用普通文件工具组织）`,
-        '原则：状态放这个 workspace，不要放进 worktree 或临时目录；brief 只写核心思想，进度用 note。',
+        '原则：状态放这个 workspace，不要放进 worktree 或临时目录；brief 只写核心思想，进度用 note；用户给的提醒/纠正当场记进去。',
       ].join('\n')
     case 'update':
       return value.changed === false
@@ -1036,6 +1089,7 @@ export function apply(ctx) {
         return right.lastTouchedAt - left.lastTouchedAt
       })
       const shown = entries.slice(0, 6)
+      const mine = entries.find((entry) => entry.sessionId !== undefined && entry.sessionId === sessionId)
       const lines = [
         '## 长线任务花名册（dsh-longtasks）',
         '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask brief <id> 取交接简报。',
@@ -1044,6 +1098,9 @@ export function apply(ctx) {
         '工作原则：',
         ...PRINCIPLES.map((line) => `- ${line}`),
       ]
+      if (mine !== undefined) {
+        lines.splice(4, 0, `本会话负责的任务：「${mine.name}」（id=${mine.id}）——用户这轮给的提醒、纠正、决定，记到它名下（longtask note），不要记到别的任务或只留在对话里。`)
+      }
       for (const entry of shown) {
         const star = entry.sessionId !== undefined && entry.sessionId === sessionId ? '★ ' : ''
         const pieces = [

@@ -13,7 +13,7 @@
 这个插件把这类任务固定成**一个目录**：
 
 ```
-~/.dsh/longtasks/tasks/<id>/
+~/.dsh/longtasks/<id>/
 ├── TASK.md          # 档案：核心思想 + 下一步 + 工作记录（插件维护这几节）
 ├── issue-ledger.md  # ↓ 以下全部由这个任务自己决定
 ├── queries/*.sql
@@ -87,8 +87,8 @@ cp -R ~/Desktop/dsh-longtasks ~/.dsh/profiles/desktop/node_modules/dsh-longtasks
 
 ## 数据与接口
 
-- `~/.dsh/longtasks/tasks/<id>/TASK.md`：档案（frontmatter + 核心思想 + 工作记录），原子写。
-- `~/.dsh/longtasks/tasks/<id>/…`：workspace，插件只读不写。
+- `~/.dsh/long<id>/TASK.md`：档案（frontmatter + 核心思想 + 工作记录），原子写。
+- `~/.dsh/longtasks/<id>/…`：workspace，插件只读不写。
 - `~/.dsh/longtasks/INDEX.md`：人读索引，每次写入后重新生成。
 - `~/.dsh/longtasks/roster.json`：旧版单文件格式，启动时自动迁移成任务目录并留档。
 - `GET /api/longtasks/roster`：面板数据（附带 workspace 文件清单）。

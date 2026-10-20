@@ -128,6 +128,18 @@ describe('任务目录与档案', () => {
     assert.ok(readdirSync(root).some((name) => name.startsWith('roster.json.migrated-')))
   })
 
+  it('早期多一层的 tasks/<id>/ 会合并到 <id>/，已有工作区文件不丢', () => {
+    mkdirSync(join(rosterDir(), 'lt-77777777'), { recursive: true })
+    writeFileSync(join(rosterDir(), 'lt-77777777', 'TASK.md'), '---\nid: lt-77777777\nname: 多一层的\nstatus: active\n---\n\n## 核心思想\n\n旧的\n')
+    mkdirSync(join(rosterDir(), 'tasks', 'lt-77777777'), { recursive: true })
+    writeFileSync(join(rosterDir(), 'tasks', 'lt-77777777', 'work.md'), 'agent 写的东西\n')
+    const entries = fresh().all()
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].name, '多一层的')
+    assert.equal(readFileSync(join(rosterDir(), 'lt-77777777', 'work.md'), 'utf8'), 'agent 写的东西\n')
+    assert.equal(existsSync(join(rosterDir(), 'tasks')), false)
+  })
+
   it('早期平铺的 tasks/<id>.md 迁移进任务目录', () => {
     mkdirSync(rosterDir(), { recursive: true })
     writeFileSync(join(rosterDir(), 'lt-99999999.md'), '---\nid: lt-99999999\nname: 平铺的\nstatus: active\n---\n\n## 核心思想\n\n旧的\n')
@@ -206,14 +218,18 @@ describe('工具与系统提示', () => {
     assert.match(brief.brief, /workspace/)
   })
 
-  it('系统提示里带着工作原则（状态归任务、不进 worktree）', async () => {
+  it('系统提示里带着工作原则，并点明本会话负责的任务', async () => {
     const roster = fresh()
     roster.create({ name: '原则检查', brief: '核心' }, facts)
     const { section } = await applyOnce()
-    const rendered = section.text({ agent: { session: { id: 's', header: { cwd: '/tmp' } } } })
+    // 用条目绑定的会话 id，才能命中「本会话负责的任务」那一行
+    const rendered = section.text({ agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
     assert.match(rendered, /工作原则/)
     assert.match(rendered, /不要放进 worktree 或临时目录/)
     assert.match(rendered, /状态归任务自己/)
+    assert.match(rendered, /用户在本会话给出的提醒/)
+    // 本会话绑定的任务被点名，提醒该往哪记一目了然
+    assert.match(rendered, /本会话负责的任务：「原则检查」/)
   })
 
   it('久未更新的条目在系统提示里带警示', async () => {
