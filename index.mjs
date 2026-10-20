@@ -42,6 +42,7 @@ export const PRINCIPLES = [
   '不要放进 worktree 或临时目录：git worktree、/tmp、缓存目录只放构建、试跑、验证这类一次性产物，随时可删，不能当唯一真相。',
   'brief 只写稳定的核心思想（是什么、为什么、硬约束）；进度和结论用 longtask note，一轮工具调用不值得记。',
   'workspace 结构自己定，但要让接手的人一眼找到「当前状态」和「下一步」。',
+  'TASK.md 是索引不是仓库：核心思想、下一步、一行结论留在里面；台账、长结论、日志拆成 workspace 里的独立文件（如 ledger.md、decisions.md、notes/2026-10.md），TASK.md 里只留一行指针。',
   '依赖外部资产（worktree 池、缓存、外部仓库）时，在 brief 里写明路径，交接时才找得回来。',
   '用户在本会话给出的提醒、约束、决定、纠正，当场用 longtask note 记到对应任务的记录里，不要只留在对话中；只影响某条任务就记那条，影响面超出所有任务才新建一条。',
 ]
@@ -736,7 +737,7 @@ function makeTool(roster) {
       brief: { type: 'string', description: 'create/update：核心思想——这个任务是什么、为什么做、硬约束是什么。稳定、短，不写流水账' },
       next: { type: 'string', description: 'create/update：下一步该做什么（下次接手的第一动作）' },
       status: { type: 'string', description: 'update：任务状态', enum: STATUSES },
-      text: { type: 'string', description: 'note：这一阶段的结论、卡点或决定（一行到一段，不是每一轮的工具流水）' },
+      text: { type: 'string', description: 'note：一行结论（建议 ≤200 字）——这一阶段做了什么、结论是什么；细节写进 workspace 的文件里，note 里留文件名即可' },
       target: { type: 'string', description: 'show/update/note/handoff/archive/delete：任务 id 或名字' },
       sessionId: { type: 'string', description: 'create/update：显式指定常驻会话 id；缺省用当前会话' },
       bind: { type: 'boolean', description: 'update：把这条任务绑到当前会话（面板新建的任务用这个补绑定）' },
@@ -752,7 +753,7 @@ function makeTool(roster) {
       'workspace 里放什么是任务自己的事：插件不预设结构，你用普通文件工具（Read/Write/Edit/Bash）按任务性质自己组织；',
       'brief 只写稳定的核心思想，不要写成流水账。',
       'create 建档案并默认绑定当前会话；list/show 查看；update 改状态/下一步/核心思想；',
-      'note 追加一条阶段性结论；handoff 取可直接粘贴给新会话的交接简报（brief 为旧名，仍可用）；archive 归档；delete 删除。',
+      'note 追加一行阶段性结论（细节写进 workspace 的文件，TASK.md 只当索引）；handoff 取可直接粘贴给新会话的交接简报（brief 为旧名，仍可用）；archive 归档；delete 删除。',
       '约定：用户说「把这个做成长线任务/以后每天跟进」时用 create；',
       '每完成一个阶段用 note 记一行结论并 update 下一步；新会话接手时先 list 或 brief。',
     ].join(''),
@@ -877,7 +878,11 @@ function renderToolText(value, roster) {
         : `已更新任务「${value.entry.name}」：${STATUS_LABEL[value.entry.status] ?? value.entry.status}${value.entry.next.length > 0 ? ` · 下一步：${value.entry.next}` : ''}`
     case 'note': {
       const count = Array.isArray(value.entry.notes) ? value.entry.notes.length : 0
-      return `已记一条阶段性结论（共 ${count} 条）：${value.entry.name}`
+      const text = typeof value.entry?.notes?.[0]?.text === 'string' ? value.entry.notes[0].text : ''
+      const hint = text.length > 400
+        ? `\n这条有 ${text.length} 字：建议把细节移到 workspace 的文件（如 ledger.md、notes/<月>.md），note 里只留一行结论 + 文件名。`
+        : ''
+      return `已记一条阶段性结论（共 ${count} 条）：${value.entry.name}${hint}`
     }
     case 'archive':
       return `已归档任务「${value.entry.name}」`
@@ -1249,6 +1254,7 @@ export function apply(ctx) {
         '跨会话的长期任务。标 ★ 的是当前会话负责的条目；接手前先用 longtask handoff <id> 取交接简报（brief 是旧名，仍可用）。',
         '每个任务的 workspace 目录就是它自己的工作区，结构完全由任务决定；插件不规定格式，用普通文件工具自己组织。',
         'brief（核心思想）只写稳定的东西；阶段结束用 longtask note 记一行结论，并 update 下一步。',
+        'TASK.md 是索引不是仓库：台账、长记录、日志拆到 workspace 的独立文件里，TASK.md 只留一行指针。',
         '工作原则：',
         ...PRINCIPLES.map((line) => `- ${line}`),
       ]

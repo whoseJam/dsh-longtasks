@@ -297,6 +297,16 @@ describe('工具与系统提示', () => {
     assert.ok(Array.isArray(tool.parameters.properties.action.enum))
   })
 
+  it('过长的 note 会提示移到 workspace 文件', async () => {
+    const { tool } = await applyOnce()
+    const created = await tool.execute({ action: 'create', name: '长记录', brief: '核心' },
+      { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
+    const long = 'x'.repeat(500)
+    const noted = await tool.execute({ action: 'note', target: created.entry.id, text: long },
+      { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
+    assert.match(tool.output.render({}, noted)[0].text, /建议把细节移到 workspace 的文件/)
+  })
+
   it('list 只回摘要，不把整份工作记录塞回去', async () => {
     const { tool } = await applyOnce()
     rosterFor('list 摘要')
@@ -341,6 +351,7 @@ describe('工具与系统提示', () => {
     assert.match(rendered, /不要放进 worktree 或临时目录/)
     assert.match(rendered, /状态归任务自己/)
     assert.match(rendered, /用户在本会话给出的提醒/)
+    assert.match(rendered, /TASK\.md 是索引不是仓库/)
     // 本会话绑定的任务被点名，提醒该往哪记一目了然
     assert.match(rendered, /本会话负责的任务：「原则检查」/)
   })
