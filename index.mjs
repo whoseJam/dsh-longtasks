@@ -51,6 +51,8 @@ export const PRINCIPLES = [
 const MAX_NAME = 120
 const MAX_TEXT = 8000
 const MAX_NOTE_CHARS = 8000
+/** 超过这个字数才提示把细节拆到文件；5000 字以内的结论可以留在 note 里。 */
+const LONG_NOTE_CHARS = 5000
 const MAX_NOTES = 200
 const MAX_BODY_BYTES = 512 * 1024
 const MAX_FILES_IN_BRIEF = 20
@@ -738,7 +740,7 @@ function makeTool(roster) {
       brief: { type: 'string', description: 'create/update：核心思想——这个任务是什么、为什么做、硬约束是什么。稳定、短，不写流水账' },
       next: { type: 'string', description: 'create/update：下一步该做什么（下次接手的第一动作）' },
       status: { type: 'string', description: 'update：任务状态', enum: STATUSES },
-      text: { type: 'string', description: 'note：一行结论（建议 ≤200 字）——这一阶段做了什么、结论是什么；细节写进 workspace 的文件里，note 里留文件名即可' },
+      text: { type: 'string', description: 'note：这一阶段的结论——做了什么、结论是什么；细节写进 workspace 的文件里，note 里留文件名即可（超过 5000 字才会提示拆分）' },
       target: { type: 'string', description: 'show/update/note/handoff/archive/delete：任务 id 或名字' },
       sessionId: { type: 'string', description: 'create/update：显式指定常驻会话 id；缺省用当前会话' },
       bind: { type: 'boolean', description: 'update：把这条任务绑到当前会话（面板新建的任务用这个补绑定）' },
@@ -882,8 +884,8 @@ function renderToolText(value, roster) {
       const text = typeof value.entry?.notes?.[0]?.text === 'string' ? value.entry.notes[0].text : ''
       const files = roster.workspaceFiles(value.entry, 50)
       const many = count >= 8 && files.length < 3
-      const hint = text.length > 400
-        ? `\n这条有 ${text.length} 字：细节写进 workspace 的主题文件（topics/<slug>.md、decisions.md、runbook.md），note 里只留一行结论 + 文件名。`
+      const hint = text.length > LONG_NOTE_CHARS
+        ? `\n这条有 ${text.length} 字：细节写进 workspace 的主题文件（topics/<slug>.md、decisions.md、runbook.md），note 里只留结论摘要 + 文件名。`
         : many
           ? `\n这条任务已有 ${count} 条记录、workspace 里只有 ${files.length} 个文件：建议按线索拆成 topics/<slug>.md + README.md，TASK.md 只留最近结论。`
           : ''

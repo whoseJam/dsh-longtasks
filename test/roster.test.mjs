@@ -301,7 +301,7 @@ describe('工具与系统提示', () => {
     const { tool } = await applyOnce()
     const created = await tool.execute({ action: 'create', name: '长记录', brief: '核心' },
       { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
-    const long = 'x'.repeat(500)
+    const long = 'x'.repeat(5001)
     const noted = await tool.execute({ action: 'note', target: created.entry.id, text: long },
       { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } })
     assert.match(tool.output.render({}, noted)[0].text, /细节写进 workspace 的主题文件/)

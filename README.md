@@ -68,7 +68,7 @@ session that owns one.
 5. **TASK.md 是索引不是仓库**：核心思想、下一步、最近 1-3 条一行结论留在里面，别的都出去。
 6. **长记录按逻辑拆，不按日期堆**：每个线索/问题一个文件（`topics/<slug>.md`），决策与理由进 `decisions.md`，可复用步骤进 `runbook.md`，当前在办的事进 `ledger.md`，再写一个 `README.md` 列清每个文件是什么；同一类内容先并进已有文件，不要一件事一个文件。
 
-`longtask` 会机械化地提醒这两种情况：单条 `note` 超过 400 字 → "细节写进主题文件"；记录已超过 8 条而 workspace 还不到 3 个文件 → "建议按线索拆成 `topics/<slug>.md` + `README.md`"。
+`longtask` 会机械化地提醒这两种情况：单条 `note` 超过 5000 字 → "细节写进主题文件"；记录已超过 8 条而 workspace 还不到 3 个文件 → "建议按线索拆成 `topics/<slug>.md` + `README.md`"。
 
 一个长任务的 workspace 通常长这样：
 
