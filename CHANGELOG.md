@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4
+
+- **长记录按逻辑拆文件**：工作原则要求每个线索/问题一个 `topics/<slug>.md`，决策进 `decisions.md`、步骤进 `runbook.md`、在办清单进 `ledger.md`，并用 `README.md` 说明每个文件是什么；同一类内容先并进已有文件。
+- 机械提醒：单条 `note` 超过 400 字 → "细节写进主题文件"；记录超过 8 条而 workspace 不到 3 个文件 → "按线索拆成 `topics/<slug>.md` + `README.md`"。
+- README：补一个典型 workspace 布局示例。
+
+
 ## 0.1.3
 
 - **TASK.md 当索引**：工作原则新增一条，要求把台账、长结论、日志拆到 workspace 的独立文件；`longtask note` 超过 400 字会提示"细节该进文件"。
