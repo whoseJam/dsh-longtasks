@@ -4,6 +4,15 @@
 
 长线任务花名册 —— 让跨天、跨会话的长期任务在 DSH 里有一个固定身份，而不是每天早上重新解释一遍。
 
+## English summary
+
+A long-running-task roster for DeepSeek Harness. Each long task gets **one directory** —
+`TASK.md` holds the stable core idea (brief) plus a stage-level log, and every other file in
+that directory is a free-form workspace the agent organizes itself. The plugin does not impose
+a structure; it provides identity, a pinned session, an index, a handoff brief, and a
+`longtask` tool plus `/longtask` command. A sidebar panel lists tasks and jumps back to the
+session that owns one.
+
 ## 它解决什么
 
 一个长线任务往往持续若干天：它有自己的目标、进展、卡点、下一步，还有一个「负责它的会话」。
@@ -142,6 +151,14 @@ npm publish --access public        # 或打 tag 让 .github/workflows/publish.ym
 - 宿主半侧在 DSH 进程内运行，**不受工作区沙箱约束**——这对所有 DSH 插件成立。
 - 面板数据面只监听本机 loopback，与 DSH 自身的 Web 服务同源。
 - 任务目录是纯文件，卸载插件不会删除；没有跨设备同步。
+
+## 已知限制
+
+- **界面是中文**，还没接 `ctx.locale` 做多语言。
+- **新建任务要靠模型**：面板只能看、改状态、归档，没有"新建"按钮（新建要绑定会话，等 API 稳定后再做）。
+- **删除是软删**：任务目录移到 `~/.dsh/longtasks/.trash/<id>-<时间戳>`，不会真的 `rm -rf`。
+- **没有跨设备同步**，也没有加密；档案是本地纯文本。
+- **用户提醒兜底是启发式**：关键词命中才触发，可能漏（长句、英文缩写）也可能多（一次闲聊里出现"应该"）。
 
 ## 卸载
 

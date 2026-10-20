@@ -111,8 +111,12 @@ describe('任务目录与档案', () => {
     roster.update(entry.id, { status: 'archived' })
     assert.equal(roster.visible().length, 0)
     assert.equal(roster.visible({ includeArchived: true }).length, 1)
-    roster.remove(entry.id)
+    writeFileSync(join(entry.workspace, 'ledger.md'), '# 不能丢\n')
+    const removed = roster.remove(entry.id)
+    // 目录移到 .trash，而不是 rm -rf：工作产物还能捞回来
     assert.equal(existsSync(join(rosterDir(), entry.id)), false)
+    assert.match(removed.trash, /\.trash\/lt-/)
+    assert.equal(readFileSync(join(removed.trash, 'ledger.md'), 'utf8'), '# 不能丢\n')
   })
 
   it('旧版 roster.json 迁移成任务目录', () => {
@@ -151,6 +155,66 @@ describe('任务目录与档案', () => {
   })
 })
 
+describe('HTTP 数据面', () => {
+  beforeEach(() => { reset() })
+
+  const startServer = async () => {
+    const routes = new Map()
+    const ctx = {
+      get: (name) => (name === 'webServer' ? { register: (def) => { routes.set(def.path, def.handler); return () => {} } } : undefined),
+      on: () => () => {},
+      effect: () => () => {},
+      tools: { register: () => {} },
+      systemPrompt: { section: () => {} },
+    }
+    const { apply } = await import('../index.mjs')
+    apply(ctx)
+    return routes
+  }
+
+  const call = async (handler, { method = 'GET', url = '/', body } = {}) => {
+    const chunks = body === undefined ? [] : [Buffer.from(JSON.stringify(body))]
+    const req = {
+      method,
+      url,
+      headers: {},
+      async *[Symbol.asyncIterator]() { for (const chunk of chunks) yield chunk },
+    }
+    const response = { status: 0, payload: undefined }
+    const res = {
+      writeHead: (status) => { response.status = status },
+      end: (text) => { response.payload = text === undefined ? undefined : JSON.parse(text) },
+    }
+    await handler(req, res)
+    return response
+  }
+
+  it('roster 给面板返回摘要 + workspace 文件 + 交接简报', async () => {
+    const roster = fresh()
+    const { entry } = roster.create({ name: '面板数据', brief: '核心思想在这里', next: '下一步在这' }, facts)
+    writeFileSync(join(entry.workspace, 'ledger.md'), '# 台账\n')
+    const routes = await startServer()
+    const response = await call(routes.get('/api/longtasks/roster'))
+    assert.equal(response.status, 200)
+    const [row] = response.payload.entries
+    assert.equal(row.name, '面板数据')
+    assert.deepEqual(row.files, ['ledger.md'])
+    // 复制简报要拿到完整交接简报，而不是核心思想
+    assert.match(row.handoff, /# 长线任务交接简报：面板数据/)
+    assert.match(row.handoff, /ledger\.md/)
+    assert.match(row.handoff, /下一步在这/)
+  })
+
+  it('action 只接受 POST，未知动作报错', async () => {
+    const routes = await startServer()
+    const got = await call(routes.get('/api/longtasks/action'), { method: 'GET' })
+    assert.equal(got.status, 405)
+    const bad = await call(routes.get('/api/longtasks/action'), { method: 'POST', body: { action: 'explode' } })
+    assert.equal(bad.status, 400)
+    assert.match(bad.payload.error, /未知 action/)
+  })
+})
+
 describe('/longtask 命令', () => {
   beforeEach(() => { reset() })
   const invocation = (rawInput) => ({
@@ -180,6 +244,8 @@ describe('/longtask 命令', () => {
 describe('工具与系统提示', () => {
   beforeEach(() => { reset() })
 
+  const rosterFor = (name) => fresh().create({ name, brief: '核心' }, facts)
+
   const applyOnce = async () => {
     const tools = []
     const sections = []
@@ -194,6 +260,24 @@ describe('工具与系统提示', () => {
     apply(ctx)
     return { tool: tools[0], section: sections[0] }
   }
+
+  it('工具的参数表是合法 JSON Schema（required 在对象级）', async () => {
+    const { tool } = await applyOnce()
+    assert.deepEqual(tool.parameters.required, ['action'])
+    assert.equal(tool.parameters.properties.action.required, undefined)
+    assert.ok(Array.isArray(tool.parameters.properties.action.enum))
+  })
+
+  it('list 只回摘要，不把整份工作记录塞回去', async () => {
+    const { tool } = await applyOnce()
+    rosterFor('list 摘要')
+    const exec = { agent: { session: { id: 'session-test-1', header: { cwd: '/tmp' } } } }
+    const listed = await tool.execute({ action: 'list' }, exec)
+    const row = listed.entries[0]
+    assert.equal(row.notes, undefined)
+    assert.equal(row.noteCount, 0)
+    assert.ok(typeof row.brief === 'string')
+  })
 
   it('create/list/show/note/brief 全链路，show 返回 TASK.md 原文', async () => {
     const { tool } = await applyOnce()

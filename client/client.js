@@ -478,7 +478,7 @@
 
           const copyBrief = useCallback(async (entry) => {
             try {
-              await copyText(entry.brief || `${entry.name}\n${entry.goal}`)
+              await copyText(entry.handoff || entry.brief || `${entry.name}\n${entry.next}`)
               setNotice({ kind: 'ok', text: `「${entry.name}」的交接简报已复制。` })
             } catch (error) {
               setNotice({ kind: 'error', text: `复制失败：${error instanceof Error ? error.message : String(error)}` })

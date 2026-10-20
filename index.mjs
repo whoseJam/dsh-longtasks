@@ -297,6 +297,7 @@ export class Roster {
     this.indexFile = join(root, 'INDEX.md')
     this.legacyTasks = join(root, 'tasks')
     this.cache = new Map()
+    this.migrated = false
   }
 
   ensureDir() {
@@ -408,7 +409,10 @@ export class Roster {
 
   all() {
     this.ensureDir()
-    this.migrateLegacy()
+    if (!this.migrated) {
+      this.migrateLegacy()
+      this.migrated = true
+    }
     const entries = []
     const seen = new Set()
     for (const id of readdirSync(this.tasks)) {
@@ -643,17 +647,25 @@ export class Roster {
     return { entry: this.commit(entry, text2) }
   }
 
+  /**
+   * 删除任务。不直接 rm -rf：任务目录里是用户的工作产物，先整目录移到 .trash/<id>-<ts>，
+   * 想找回还能捞，过一段时间自己清。
+   */
   remove(target) {
     const found = this.get(target)
     if (found.error !== undefined) return found
+    const id = found.entry.id
+    const trashDir = join(this.root, '.trash')
+    const destination = join(trashDir, `${id}-${Date.now()}`)
     try {
-      rmSync(this.taskDir(found.entry.id), { recursive: true, force: true })
+      mkdirSync(trashDir, { recursive: true })
+      renameSync(this.taskDir(id), destination)
     } catch (error) {
-      return { error: `删除任务目录失败：${error?.message ?? String(error)}` }
+      return { error: `移入回收站失败：${error?.message ?? String(error)}` }
     }
-    this.cache.delete(found.entry.id)
+    this.cache.delete(id)
     this.writeIndex()
-    return { entry: found.entry }
+    return { entry: found.entry, trash: destination }
   }
 }
 
@@ -711,10 +723,10 @@ function makeTool(roster) {
   const parameters = {
     type: 'object',
     additionalProperties: false,
+    required: ['action'],
     properties: {
       action: {
         type: 'string',
-        required: true,
         enum: ['create', 'list', 'show', 'update', 'note', 'brief', 'archive', 'delete'],
         description: '要执行的动作；create 建档案，note 记一条结论，brief 取交接简报，list/show 只读',
       },
@@ -773,7 +785,19 @@ function makeTool(roster) {
             ok: true,
             action,
             entries: entries.map((entry) => ({
-              ...entry,
+              id: entry.id,
+              name: entry.name,
+              kind: entry.kind,
+              status: entry.status,
+              next: entry.next,
+              brief: entry.brief,
+              sessionId: entry.sessionId,
+              cwd: entry.cwd,
+              workspace: entry.workspace,
+              createdAt: entry.createdAt,
+              updatedAt: entry.updatedAt,
+              lastTouchedAt: entry.lastTouchedAt,
+              noteCount: entry.notes.length,
               files: roster.workspaceFiles(entry, 20).map((file) => file.path),
             })),
           }
@@ -853,7 +877,7 @@ function renderToolText(value, roster) {
     case 'archive':
       return `已归档任务「${value.entry.name}」`
     case 'delete':
-      return `已删除任务「${value.entry.name}」`
+      return `已把任务「${value.entry.name}」移到回收站：${value.trash ?? '.trash'}（需要找回就去这里）`
     case 'show':
       return [
         `任务「${value.entry.name}」的档案：${value.taskFile}`,
@@ -980,8 +1004,9 @@ export function handleUserMessage(roster, session, event) {
   if (bound === undefined) return
   const list = pendingReminders.get(sessionId) ?? []
   if (list.some((item) => item.text === text)) return
-  list.push({ at: nowMs(), text })
-  pendingReminders.set(sessionId, list.slice(-3))
+  const fresh = list.filter((item) => nowMs() - item.at < PENDING_TTL_MS)
+  fresh.push({ at: nowMs(), text })
+  pendingReminders.set(sessionId, fresh.slice(-3))
 }
 
 /** 模型把提醒记进档案后清空（由 longtask note 触发）。 */
@@ -1051,7 +1076,12 @@ function registerRoutes(ctx, webServer, roster) {
           .sort((left, right) => right.lastTouchedAt - left.lastTouchedAt)
           .map((entry) => {
             const files = roster.workspaceFiles(entry, 20)
-            return { ...entry, fileCount: files.length, files: files.map((file) => file.path) }
+            return {
+              ...entry,
+              fileCount: files.length,
+              files: files.map((file) => file.path),
+              handoff: formatBrief(entry, files),
+            }
           })
         sendJson(res, 200, {
           ok: true,
